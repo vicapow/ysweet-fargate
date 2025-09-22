@@ -115,51 +115,25 @@ aws s3api put-bucket-metrics-configuration \
   --metrics-configuration Id=EntireBucket
 ```
 
-### **3. Verify Configuration**
+### **3. Verify Bucket Configuration**
 
-```bash
-# Check versioning status
-aws s3api get-bucket-versioning --bucket $BUCKET_NAME
-
-# Check encryption status
-aws s3api get-bucket-encryption --bucket $BUCKET_NAME
-
-# Check metrics configuration
-aws s3api get-bucket-metrics-configuration --bucket $BUCKET_NAME --id EntireBucket
-```
-
-**Expected output examples:**
-```json
-// Versioning enabled
-{"Status": "Enabled"}
-
-// Encryption configured
-{"ServerSideEncryptionConfiguration": {"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}}
-
-// Metrics enabled
-{"MetricsConfiguration": {"Id": "EntireBucket"}}
-```
-
-### **4. Verify Existing Bucket (if you already have one)**
-
-If you're using an existing bucket that was previously managed by Terraform, verify it's properly configured:
+After creating a new bucket OR to verify an existing bucket is properly configured:
 
 ```bash
 # Replace with your actual bucket name
-BUCKET_NAME="your-existing-bucket-name"
+BUCKET_NAME="your-bucket-name"
 
-# Check all configurations at once
-echo "=== Versioning Status ==="
+# Check versioning
 aws s3api get-bucket-versioning --bucket $BUCKET_NAME
+# Expected output: {"Status": "Enabled"}
 
-echo -e "\n=== Encryption Status ==="
+# Check encryption
 aws s3api get-bucket-encryption --bucket $BUCKET_NAME
+# Expected output: {"ServerSideEncryptionConfiguration": {"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}}
 
-echo -e "\n=== Metrics Configuration ==="
+# Check metrics
 aws s3api get-bucket-metrics-configuration --bucket $BUCKET_NAME --id EntireBucket
-
-# If all commands return valid configurations, your bucket is ready!
-echo -e "\n✅ Bucket verification complete!"
+# Expected output: {"MetricsConfiguration": {"Id": "EntireBucket"}}
 ```
 
 **Note:** Once created, update the `bucket_name` variable in your `terraform.tfvars` to match your bucket name.
