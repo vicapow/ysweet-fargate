@@ -4,11 +4,75 @@ This repository contains Terraform configuration to deploy [Y-Sweet](https://git
 
 ## Architecture
 
-- **ECS Fargate**: Runs Y-Sweet in multi-document mode
-- **Application Load Balancer**: Public HTTP/WebSocket access
-- **S3 Storage**: Persistent document storage with encryption (human-readable bucket names)
-- **CloudWatch Logs**: Container logging
-- **IAM Roles**: Secure S3 access permissions
+This infrastructure deploys **Y-Sweet**, a collaborative document server built on Yjs for real-time collaborative editing (think Google Docs-style live collaboration). The setup is optimized for WebSocket connections and high-throughput document synchronization.
+
+### 🏗️ **Infrastructure Components**
+
+#### **1. Core Application (ECS Fargate)**
+- **ECS Cluster**: Managed container orchestration
+- **Fargate Task**: Single task with **4 vCPU + 8GB RAM** ("beast mode" for high concurrency)
+- **Container**: Runs `y-sweet serve` with S3 backend storage
+- **Networking**: Uses default VPC with public subnets and assigned public IPs
+
+#### **2. Load Balancer & SSL**
+- **Application Load Balancer (ALB)**: Internet-facing, handles HTTP/HTTPS traffic
+- **Target Group**: Health checks on `/ready` endpoint with WebSocket optimizations
+- **SSL Certificate**: Optional ACM certificate with DNS validation
+- **Smart Routing**: 
+  - SSL enabled: HTTP (80) → redirects to HTTPS (443)
+  - SSL disabled: HTTP (80) → forwards directly to container
+- **WebSocket Optimized**: 
+  - 1-hour idle timeout for long-lived connections
+  - 30-second deregistration delay for graceful shutdowns
+
+#### **3. Storage Layer**
+- **S3 Bucket**: Stores Y-Sweet documents with versioning and server-side encryption
+- **Dual IAM Access Strategy**:
+  - **ECS Task Role**: For container to access S3 via AWS SDK
+  - **IAM User + Access Keys**: Programmatic access (passed as environment variables)
+
+#### **4. Security**
+- **ALB Security Group**: Allows HTTP (80) + HTTPS (443) from internet (0.0.0.0/0)
+- **Task Security Group**: Restricts access to container port (8080) only from ALB
+- **S3 Security**: Server-side encryption (AES256), public access blocked
+- **Authentication**: Y-Sweet auth key required for all document operations
+
+#### **5. Monitoring & Observability**
+- **CloudWatch Logs**: Container logs with 7-day retention
+- **Log Metric Filters**: Automatically tracks INFO/WARN/ERROR/TOTAL log counts
+- **Comprehensive Dashboard**: Real-time monitoring of:
+  - ECS metrics (CPU, memory, task health)
+  - ALB performance (requests, response times, connections)
+  - S3 storage metrics (bucket size, object count)
+  - Document save activity and error tracking
+
+### 🔄 **Data Flow**
+
+```
+Internet → ALB (HTTP/HTTPS) → ECS Fargate Task → Y-Sweet Server
+                                       ↓
+                              S3 Bucket (Document Storage)
+                                       ↓
+                            CloudWatch Logs (Monitoring)
+```
+
+### 🎯 **Use Case**
+
+Perfect for hosting **collaborative document editing services** where:
+- Multiple users edit documents simultaneously in real-time
+- Changes sync instantly via WebSocket connections
+- Document state persists reliably in S3 with versioning
+- High availability with load balancing and health checks
+- Secure SSL termination for production use
+- Comprehensive monitoring for production operations
+
+### ⚡ **Performance Characteristics**
+
+- **High Concurrency**: 4 vCPU/8GB handles significant concurrent WebSocket connections
+- **Low Latency**: Direct WebSocket upgrades through ALB
+- **Scalable Storage**: S3 backend with versioning for document history
+- **Fault Tolerant**: Health checks ensure service availability
+- **Production Ready**: SSL/TLS, monitoring, and security best practices
 
 ## Prerequisites
 
@@ -18,22 +82,38 @@ This repository contains Terraform configuration to deploy [Y-Sweet](https://git
 
 ## Deployment
 
-### 1. Initialize Terraform
+### 1. Setup Remote State (Recommended)
+
+For production use, configure Terraform to store state remotely in S3:
+
+```bash
+# Run the setup script to create S3 bucket and configure backend
+./setup-remote-state.sh
+```
+
+This script will:
+- Create an S3 bucket for Terraform state with encryption and versioning
+- Automatically add the backend configuration to `main.tf`
+- Set up state locking using S3's native capabilities (no DynamoDB needed)
+
+### 2. Initialize Terraform
 ```bash
 terraform init
 ```
 
-### 2. Review the deployment plan
+If you ran the remote state setup, Terraform will offer to migrate your existing local state to S3. Choose "yes" when prompted.
+
+### 3. Review the deployment plan
 ```bash
 terraform plan
 ```
 
-### 3. Deploy the infrastructure
+### 4. Deploy the infrastructure
 ```bash
 terraform apply
 ```
 
-### 4. Get the application URL
+### 5. Get the application URL
 After deployment, the ALB DNS name will be output:
 ```bash
 terraform output alb_dns_name
