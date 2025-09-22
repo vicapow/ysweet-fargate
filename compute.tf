@@ -52,8 +52,8 @@ resource "aws_iam_role_policy" "s3_access" {
         "s3:ListBucket"
       ],
       Resource = [
-        aws_s3_bucket.ysweet_storage.arn,
-        "${aws_s3_bucket.ysweet_storage.arn}/*"
+        "arn:aws:s3:::${var.bucket_name}",
+        "arn:aws:s3:::${var.bucket_name}/*"
       ]
     }]
   })
@@ -82,8 +82,8 @@ resource "aws_iam_user_policy" "ysweet_s3_user_policy" {
         "s3:ListBucket"
       ],
       Resource = [
-        aws_s3_bucket.ysweet_storage.arn,
-        "${aws_s3_bucket.ysweet_storage.arn}/*"
+        "arn:aws:s3:::${var.bucket_name}",
+        "arn:aws:s3:::${var.bucket_name}/*"
       ]
     }]
   })
@@ -110,7 +110,7 @@ resource "aws_ecs_task_definition" "this" {
       ]
       environment = [
         { name = "PORT", value = tostring(var.container_port) },
-        { name = "STORAGE_BUCKET", value = aws_s3_bucket.ysweet_storage.bucket },
+        { name = "STORAGE_BUCKET", value = var.bucket_name },
         { name = "AUTH_KEY", value = var.auth_key },
         { name = "AWS_ACCESS_KEY_ID", value = aws_iam_access_key.ysweet_s3_access_key.id },
         { name = "AWS_SECRET_ACCESS_KEY", value = aws_iam_access_key.ysweet_s3_access_key.secret },

@@ -4,7 +4,7 @@ output "alb_dns_name" {
 }
 
 output "s3_bucket_name" {
-  value       = aws_s3_bucket.ysweet_storage.bucket
+  value       = var.bucket_name
   description = "Name of the S3 bucket for Y-Sweet storage"
 }
 

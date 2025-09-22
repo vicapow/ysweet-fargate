@@ -23,7 +23,7 @@ variable "image" {
 
 variable "bucket_name" {
   type        = string
-  description = "Human-readable S3 bucket name for Y-Sweet storage"
+  description = "S3 bucket name for Y-Sweet storage (must be created manually - see README)"
 }
 
 variable "auth_key" {

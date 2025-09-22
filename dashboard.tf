@@ -125,7 +125,7 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
 
         properties = {
           metrics = [
-            ["AWS/S3", "BucketSizeBytes", "BucketName", aws_s3_bucket.ysweet_storage.bucket, "StorageType", "StandardStorage"],
+            ["AWS/S3", "BucketSizeBytes", "BucketName", var.bucket_name, "StorageType", "StandardStorage"],
             [".", "NumberOfObjects", ".", ".", ".", "AllStorageTypes"]
           ]
           view    = "timeSeries"

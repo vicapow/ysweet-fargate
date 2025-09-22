@@ -74,6 +74,62 @@ This project follows Terraform best practices with modular file organization:
 
 Each file has a single responsibility, making the infrastructure easy to understand, maintain, and collaborate on.
 
+## 🪣 S3 Bucket Setup
+
+**Important:** The S3 bucket for Y-Sweet document storage is **not managed by Terraform**. You must create and configure it manually before running Terraform.
+
+### **1. Create the S3 Bucket**
+
+```bash
+# Replace 'your-ysweet-storage-bucket' with your desired bucket name
+export BUCKET_NAME="your-ysweet-storage-bucket"
+export AWS_REGION="us-east-1"  # or your preferred region
+
+# Create the bucket
+aws s3 mb s3://$BUCKET_NAME --region $AWS_REGION
+```
+
+### **2. Configure Bucket Settings**
+
+```bash
+# Enable versioning (recommended for data protection)
+aws s3api put-bucket-versioning \
+  --bucket $BUCKET_NAME \
+  --versioning-configuration Status=Enabled
+
+# Enable server-side encryption (recommended for security)
+aws s3api put-bucket-encryption \
+  --bucket $BUCKET_NAME \
+  --server-side-encryption-configuration '{
+    "Rules": [{
+      "ApplyServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+      }
+    }]
+  }'
+
+# Enable CloudWatch metrics (required for dashboard monitoring)
+aws s3api put-bucket-metrics-configuration \
+  --bucket $BUCKET_NAME \
+  --id EntireBucket \
+  --metrics-configuration Id=EntireBucket
+```
+
+### **3. Verify Configuration**
+
+```bash
+# Check versioning status
+aws s3api get-bucket-versioning --bucket $BUCKET_NAME
+
+# Check encryption status
+aws s3api get-bucket-encryption --bucket $BUCKET_NAME
+
+# Check metrics configuration
+aws s3api get-bucket-metrics-configuration --bucket $BUCKET_NAME --id EntireBucket
+```
+
+**Note:** Once created, update the `bucket_name` variable in your `terraform.tfvars` to match your bucket name.
+
 ## ⚙️ Configuration
 
 ### **Required Variables**
