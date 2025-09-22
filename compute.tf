@@ -159,10 +159,25 @@ resource "aws_ecs_service" "this" {
   desired_count   = 1
   launch_type     = "FARGATE"
 
-  # Wait for steady state after deployment
+  # Force ECS to use rolling updates (not CodeDeploy blue/green).
+  # Blue/green usually runs old+new tasks at the same time.
+  deployment_controller {
+    type = "ECS"
+  }
+
+  # Hard cap the number of running tasks to desired_count (1).
+  # With max=100, ECS cannot run >1 task during deployments.
+  deployment_maximum_percent = 100
+
+  # Allow ECS to scale down to 0 during deployments/replacements.
+  # This guarantees no overlap (and therefore possible downtime).
+  deployment_minimum_healthy_percent = 0
+
+  # Wait for steady state after deployment (nice for CI/CD pipelines).
   wait_for_steady_state = true
 
-  # Health check grace period for container startup
+  # Grace period for container startup before health checks count as failed.
+  # (Doesn't affect "never >1", just reduces false negatives during cold start.)
   health_check_grace_period_seconds = 300
 
   network_configuration {
@@ -177,6 +192,6 @@ resource "aws_ecs_service" "this" {
     container_port   = var.container_port
   }
 
-  # Ensure ALB target group is created first
+  # Ensure ALB listener/target group exist first.
   depends_on = [aws_lb_listener.http]
 }
