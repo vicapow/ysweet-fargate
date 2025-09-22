@@ -335,12 +335,61 @@ resource "aws_cloudwatch_log_group" "app" {
   retention_in_days = 7
 }
 
+# CloudWatch metric filters for log monitoring
+resource "aws_cloudwatch_log_metric_filter" "info_logs" {
+  name           = "${var.app_name}-info-logs"
+  log_group_name = aws_cloudwatch_log_group.app.name
+  pattern        = "[timestamp, request_id, level=\"INFO\", ...]"
+
+  metric_transformation {
+    name      = "InfoLogCount"
+    namespace = "YSweet/Logs"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "error_logs" {
+  name           = "${var.app_name}-error-logs"
+  log_group_name = aws_cloudwatch_log_group.app.name
+  pattern        = "[timestamp, request_id, level=\"ERROR\", ...]"
+
+  metric_transformation {
+    name      = "ErrorLogCount"
+    namespace = "YSweet/Logs"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "warn_logs" {
+  name           = "${var.app_name}-warn-logs"
+  log_group_name = aws_cloudwatch_log_group.app.name
+  pattern        = "[timestamp, request_id, level=\"WARN\", ...]"
+
+  metric_transformation {
+    name      = "WarnLogCount"
+    namespace = "YSweet/Logs"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "total_logs" {
+  name           = "${var.app_name}-total-logs"
+  log_group_name = aws_cloudwatch_log_group.app.name
+  pattern        = "[timestamp, request_id, level, ...]"
+
+  metric_transformation {
+    name      = "TotalLogCount"
+    namespace = "YSweet/Logs"
+    value     = "1"
+  }
+}
+
 resource "aws_ecs_task_definition" "this" {
   family                   = var.app_name
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = "512"
-  memory                   = "1024"
+  cpu                      = "4096"  # 4 vCPU (beast mode!)
+  memory                   = "8192"  # 8 GB RAM
   execution_role_arn       = aws_iam_role.task_exec.arn
   task_role_arn           = aws_iam_role.task_role.arn
 
@@ -522,14 +571,15 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
         properties = {
           metrics = [
             ["AWS/ApplicationELB", "HealthyHostCount", "TargetGroup", aws_lb_target_group.this.arn_suffix],
-            [".", "UnHealthyHostCount", ".", "."]
+            [".", "UnHealthyHostCount", ".", "."],
+            [".", "RequestCount", "LoadBalancer", aws_lb.this.arn_suffix]
           ]
           view    = "timeSeries"
           stacked = false
           region  = var.region
-          title   = "Target Group - Health Status"
-          period  = 300
-          stat    = "Average"
+          title   = "Target Group - Health Status & Requests"
+          period  = 60
+          stat    = "Maximum"
         }
       },
       {
@@ -547,9 +597,14 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
           view    = "timeSeries"
           stacked = false
           region  = var.region
-          title   = "S3 Storage - Bucket Size & Object Count"
+          title   = "S3 Storage - Bucket Size & Object Count (Daily)"
           period  = 86400
-          stat    = "Average"
+          stat    = "Maximum"
+          yAxis = {
+            left = {
+              min = 0
+            }
+          }
         }
       },
       {
@@ -557,12 +612,87 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
         x      = 0
         y      = 18
         width  = 24
+        height = 4
+
+        properties = {
+          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /Persisting snapshot size/\n| parse @message \"size=* \" as doc_size\n| stats count() as saves, avg(doc_size) as avg_size by bin(5m)\n| sort @timestamp desc\n| limit 100"
+          region  = var.region
+          title   = "Y-Sweet Document Saves (Real-time S3 Activity)"
+          view    = "table"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 22
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["YSweet/Logs", "TotalLogCount"],
+            [".", "InfoLogCount"],
+            [".", "WarnLogCount"],
+            [".", "ErrorLogCount"]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.region
+          title   = "Log Volume by Level (Count per 5min)"
+          period  = 300
+          stat    = "Sum"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 22
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["YSweet/Logs", "ErrorLogCount", { "stat": "Sum" }],
+            [".", "WarnLogCount", { "stat": "Sum" }]
+          ]
+          view    = "timeSeries"
+          stacked = true
+          region  = var.region
+          title   = "Error & Warning Rate (per 5min)"
+          period  = 300
+          stat    = "Sum"
+          yAxis = {
+            left = {
+              min = 0
+            }
+          }
+        }
+      },
+      {
+        type   = "log"
+        x      = 0
+        y      = 28
+        width  = 12
         height = 6
 
         properties = {
           query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 100"
           region  = var.region
           title   = "Recent Error Logs"
+          view    = "table"
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 28
+        width  = 12
+        height = 6
+
+        properties = {
+          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| stats count() as log_count by bin(5m)\n| sort @timestamp desc"
+          region  = var.region
+          title   = "Log Activity Over Time"
           view    = "table"
         }
       }
