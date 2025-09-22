@@ -26,10 +26,9 @@ variable "bucket_name" {
   description = "S3 bucket name for Y-Sweet storage (must be created manually - see README)"
 }
 
-variable "auth_key" {
+variable "ysweet_auth_key_secret_arn" {
   type        = string
-  description = "Y-Sweet authentication key for production use"
-  sensitive   = true
+  description = "ARN of Secrets Manager secret containing AUTH_KEY"
 }
 
 variable "domain_name" {

@@ -138,6 +138,33 @@ aws s3api get-bucket-metrics-configuration --bucket $BUCKET_NAME --id EntireBuck
 
 **Note:** Once created, update the `bucket_name` variable in your `terraform.tfvars` to match your bucket name.
 
+## 🔐 Authentication Setup
+
+The Y-Sweet authentication key is stored securely in AWS Secrets Manager instead of plaintext in your configuration.
+
+### **Create the Auth Key Secret**
+
+```bash
+# Create a secure random auth key
+AUTH_KEY=$(openssl rand -base64 32)
+
+# Store it in Secrets Manager
+aws secretsmanager create-secret \
+  --name "ysweet-auth-key" \
+  --description "Y-Sweet authentication key" \
+  --secret-string "$AUTH_KEY" \
+  --region us-east-1
+
+# Get the ARN for your terraform.tfvars
+aws secretsmanager describe-secret \
+  --secret-id "ysweet-auth-key" \
+  --region us-east-1 \
+  --query 'ARN' \
+  --output text
+```
+
+**Copy the ARN output** and use it as the `ysweet_auth_key_secret_arn` value in your `terraform.tfvars`.
+
 ## ⚙️ Configuration
 
 ### **Required Variables**
@@ -146,9 +173,9 @@ Create `terraform.tfvars` with these required values:
 
 ```hcl
 # Required
-image       = "your-account.dkr.ecr.region.amazonaws.com/y-sweet:latest"
-bucket_name = "your-ysweet-storage-bucket"
-auth_key    = "your-secure-authentication-key"
+image                      = "your-account.dkr.ecr.region.amazonaws.com/y-sweet:latest"
+bucket_name                = "your-ysweet-storage-bucket"
+ysweet_auth_key_secret_arn = "arn:aws:secretsmanager:region:account:secret:ysweet-auth-key-xxxxxx"
 
 # Optional SSL setup
 create_ssl_cert = true
@@ -169,7 +196,7 @@ container_port  = 8080
 | `container_port` | number | `8080` | Container port for Y-Sweet |
 | `image` | string | **required** | Y-Sweet Docker image URI |
 | `bucket_name` | string | **required** | S3 bucket for document storage |
-| `auth_key` | string | **required** | Y-Sweet authentication key |
+| `ysweet_auth_key_secret_arn` | string | **required** | ARN of Secrets Manager secret containing AUTH_KEY |
 | `domain_name` | string | `""` | Domain for SSL certificate |
 | `create_ssl_cert` | bool | `false` | Whether to create SSL certificate |
 

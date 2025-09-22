@@ -1,9 +1,9 @@
 region         = "us-east-1"
 app_name       = "ysweet"
 container_port = 8080
-image          = "ghcr.io/jamsocket/y-sweet"
+image          = "732560673613.dkr.ecr.us-east-1.amazonaws.com/y-sweet:v5"
 bucket_name    = "y-sweet-crixet-dev-storage"
-auth_key       = "your-secure-auth-key-change-this"
+ysweet_auth_key_secret_arn = "arn:aws:secretsmanager:us-east-1:732560673613:secret:ysweet-auth-key-p4qg7y"
 
 # SSL Configuration (optional)
 # Set create_ssl_cert = true and provide domain_name to enable HTTPS
