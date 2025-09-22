@@ -386,13 +386,18 @@ aws cloudwatch list-metrics --namespace AWS/S3 --metric-name BucketSizeBytes --d
 
 **Note**: S3 storage metrics are updated **once daily** and may take 24-48 hours to appear after enabling metrics configuration. The metrics will only show data from the point when metrics were enabled forward.
 
-## CloudWatch Dashboard
+## Observability & Monitoring
 
-A comprehensive monitoring dashboard is automatically created for your Y-Sweet deployment. After deployment, you can access it at:
+### 📊 **CloudWatch Dashboard**
 
+A comprehensive monitoring dashboard is automatically created with your deployment:
+
+```bash
+# Access your main dashboard
+terraform output dashboard_url
 ```
-https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=ysweet-dashboard
-```
+
+**Direct link:** `https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=ysweet-dashboard`
 
 The dashboard includes the following monitoring widgets:
 
@@ -421,6 +426,152 @@ The dashboard includes the following monitoring widgets:
 - **High Response Time**: Monitor WebSocket upgrade and document operations
 
 The dashboard automatically refreshes and provides 5-minute granularity for most metrics, with S3 metrics updating daily.
+
+### 🔍 **CloudWatch Logs Insights**
+
+Advanced log analysis with pre-configured saved queries:
+
+```bash
+# Access CloudWatch Insights console
+terraform output cloudwatch_insights_url
+```
+
+**Direct link:** `https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#logs:insights`
+
+#### **Pre-configured Saved Queries**
+
+The following saved queries are automatically created for easy log analysis:
+
+1. **`ysweet-websocket-connections`**
+   ```sql
+   fields @timestamp, @message
+   | filter @message like /WebSocket/
+   | stats count() as connections by bin(5m)
+   | sort @timestamp desc
+   ```
+   *Monitors WebSocket connection patterns and volume*
+
+2. **`ysweet-document-operations`**
+   ```sql
+   fields @timestamp, @message
+   | filter @message like /Persisting snapshot/ or @message like /Loading document/
+   | parse @message "size=* " as doc_size
+   | stats count() as operations, avg(doc_size) as avg_size by bin(5m)
+   | sort @timestamp desc
+   ```
+   *Tracks document save/load operations and sizes*
+
+3. **`ysweet-error-analysis`**
+   ```sql
+   fields @timestamp, @message
+   | filter @message like /ERROR/ or @message like /WARN/ or @message like /Failed/
+   | stats count() as error_count by @message
+   | sort error_count desc
+   | limit 20
+   ```
+   *Analyzes error patterns and frequency*
+
+4. **`ysweet-performance-monitoring`**
+   ```sql
+   fields @timestamp, @message
+   | filter @message like /ms/ or @message like /seconds/
+   | parse @message /(?<duration>\d+)(ms|seconds)/
+   | stats avg(duration) as avg_duration, max(duration) as max_duration by bin(5m)
+   | sort @timestamp desc
+   ```
+   *Monitors performance metrics and timing*
+
+#### **Custom Log Analysis**
+
+You can also run custom queries directly:
+
+```bash
+# Example: Find recent WebSocket activity
+aws logs start-query \
+  --log-group-name "/ecs/ysweet" \
+  --start-time $(date -d '1 hour ago' +%s) \
+  --end-time $(date +%s) \
+  --query-string 'fields @timestamp, @message | filter @message like /WebSocket/ | sort @timestamp desc | limit 20'
+```
+
+### 💰 **Cost Monitoring**
+
+Real-time AWS cost tracking integrated into your dashboard:
+
+#### **Setup Required (One-time)**
+```bash
+# Get the setup link
+terraform output billing_dashboard_setup
+```
+
+**Manual step:** Visit `https://console.aws.amazon.com/billing/home#/preferences` and enable:
+- ✅ **Receive Billing Alerts**
+
+This enables the cost monitoring widgets in your dashboard.
+
+#### **Cost Dashboard Widgets**
+- **Total Monthly Charges**: Account-wide estimated costs
+- **Service Breakdown**: Costs by service (ECS, S3, EC2, CloudWatch)
+- **Daily Tracking**: 24-hour cost accumulation
+
+**Note**: Billing metrics update once daily and may take 24 hours to appear after enabling billing alerts.
+
+## Manual Setup Requirements
+
+Some AWS features require manual configuration outside of Terraform:
+
+### 📊 **Billing Alerts (Required for Cost Monitoring)**
+
+**Why manual?** AWS billing preferences can't be managed via Terraform for security reasons.
+
+**Setup steps:**
+1. Visit: `https://console.aws.amazon.com/billing/home#/preferences`
+2. Enable: ✅ **Receive Billing Alerts**
+3. Cost widgets will populate within 24 hours
+
+**Alternative CLI approach** (may not work in all accounts):
+```bash
+# Attempt to enable via Budgets API (creates a minimal budget)
+aws budgets create-budget \
+  --account-id $(aws sts get-caller-identity --query Account --output text) \
+  --budget '{
+    "BudgetName":"EnableBillingMetrics",
+    "BudgetLimit":{"Amount":"1","Unit":"USD"},
+    "TimeUnit":"MONTHLY",
+    "BudgetType":"COST"
+  }' \
+  --notifications-with-subscribers '[]'
+```
+
+### 🔍 **S3 Metrics (Handled by Terraform)**
+
+S3 storage metrics are automatically enabled via Terraform:
+```hcl
+resource "aws_s3_bucket_metric" "ysweet_storage_metrics" {
+  bucket = aws_s3_bucket.ysweet_storage.id
+  name   = "EntireBucket"
+}
+```
+
+**No manual action required** - metrics will appear 24-48 hours after bucket has data.
+
+## Quick Access Links
+
+All monitoring dashboards and tools:
+
+```bash
+# Main CloudWatch Dashboard
+terraform output dashboard_url
+
+# CloudWatch Insights (log analysis)  
+terraform output cloudwatch_insights_url
+
+# Billing setup page
+terraform output billing_dashboard_setup
+
+# Application URL
+terraform output application_url
+```
 
 ## License
 
