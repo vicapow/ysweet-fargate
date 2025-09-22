@@ -88,6 +88,10 @@ resource "aws_s3_bucket_metric" "ysweet_storage_metrics" {
   name   = "EntireBucket"
 }
 
+# Note: Billing metrics must be enabled manually in the AWS Billing console
+# Go to: AWS Billing Console > Billing Preferences > Receive Billing Alerts
+# This is required for cost monitoring in the dashboard
+
 # ---------- VPC (use default) ----------
 data "aws_vpc" "default" {
   default = true
@@ -397,6 +401,70 @@ resource "aws_cloudwatch_log_metric_filter" "total_logs" {
   }
 }
 
+# CloudWatch Insights Saved Queries for easy log analysis
+resource "aws_cloudwatch_query_definition" "websocket_connections" {
+  name = "${var.app_name}-websocket-connections"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.app.name
+  ]
+  
+  query_string = <<EOF
+fields @timestamp, @message
+| filter @message like /WebSocket/
+| stats count() as connections by bin(5m)
+| sort @timestamp desc
+EOF
+}
+
+resource "aws_cloudwatch_query_definition" "document_operations" {
+  name = "${var.app_name}-document-operations"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.app.name
+  ]
+  
+  query_string = <<EOF
+fields @timestamp, @message
+| filter @message like /Persisting snapshot/ or @message like /Loading document/
+| parse @message "size=* " as doc_size
+| stats count() as operations, avg(doc_size) as avg_size by bin(5m)
+| sort @timestamp desc
+EOF
+}
+
+resource "aws_cloudwatch_query_definition" "error_analysis" {
+  name = "${var.app_name}-error-analysis"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.app.name
+  ]
+  
+  query_string = <<EOF
+fields @timestamp, @message
+| filter @message like /ERROR/ or @message like /WARN/ or @message like /Failed/
+| stats count() as error_count by @message
+| sort error_count desc
+| limit 20
+EOF
+}
+
+resource "aws_cloudwatch_query_definition" "performance_monitoring" {
+  name = "${var.app_name}-performance-monitoring"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.app.name
+  ]
+  
+  query_string = <<EOF
+fields @timestamp, @message
+| filter @message like /ms/ or @message like /seconds/
+| parse @message /(?<duration>\d+)(ms|seconds)/
+| stats avg(duration) as avg_duration, max(duration) as max_duration by bin(5m)
+| sort @timestamp desc
+EOF
+}
+
 resource "aws_ecs_task_definition" "this" {
   family                   = var.app_name
   requires_compatibilities = ["FARGATE"]
@@ -624,13 +692,27 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
         type   = "log"
         x      = 0
         y      = 18
-        width  = 24
+        width  = 12
         height = 4
 
         properties = {
           query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /Persisting snapshot size/\n| parse @message \"size=* \" as doc_size\n| stats count() as saves, avg(doc_size) as avg_size by bin(5m)\n| sort @timestamp desc\n| limit 100"
           region  = var.region
           title   = "Y-Sweet Document Saves (Real-time S3 Activity)"
+          view    = "table"
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 18
+        width  = 12
+        height = 4
+
+        properties = {
+          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /WebSocket/\n| stats count() as connections by bin(5m)\n| sort @timestamp desc\n| limit 100"
+          region  = var.region
+          title   = "WebSocket Connection Activity"
           view    = "table"
         }
       },
@@ -708,6 +790,71 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
           title   = "Log Activity Over Time"
           view    = "table"
         }
+      },
+      {
+        type   = "log"
+        x      = 0
+        y      = 34
+        width  = 24
+        height = 4
+
+        properties = {
+          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /ERROR/ or @message like /WARN/ or @message like /Failed/\n| sort @timestamp desc\n| limit 50"
+          region  = var.region
+          title   = "Recent Errors and Warnings"
+          view    = "table"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 38
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AWS/Billing", "EstimatedCharges", "Currency", "USD"]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = "us-east-1"
+          title   = "AWS Account - Estimated Monthly Charges"
+          period  = 86400
+          stat    = "Maximum"
+          yAxis = {
+            left = {
+              min = 0
+            }
+          }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 38
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AWS/Billing", "EstimatedCharges", "Currency", "USD", "ServiceName", "AmazonECS"],
+            [".", ".", ".", ".", ".", "AmazonS3"],
+            [".", ".", ".", ".", ".", "AmazonEC2"],
+            [".", ".", ".", ".", ".", "AmazonCloudWatch"]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = "us-east-1"
+          title   = "Service-Level Estimated Charges"
+          period  = 86400
+          stat    = "Maximum"
+          yAxis = {
+            left = {
+              min = 0
+            }
+          }
+        }
       }
     ]
   })
@@ -715,5 +862,15 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
 
 output "dashboard_url" {
   value = "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#dashboards:name=${aws_cloudwatch_dashboard.ysweet_dashboard.dashboard_name}"
+}
+
+output "cloudwatch_insights_url" {
+  value = "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#logs:insights"
+  description = "CloudWatch Logs Insights console with saved queries for log analysis"
+}
+
+output "billing_dashboard_setup" {
+  value = "https://console.aws.amazon.com/billing/home#/preferences"
+  description = "Enable billing alerts here to see cost metrics in the dashboard"
 }
 
