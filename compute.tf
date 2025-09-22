@@ -131,7 +131,8 @@ resource "aws_ecs_task_definition" "this" {
         { name = "AWS_DEFAULT_REGION", value = var.region },
         { name = "CORS_ALLOW_ORIGIN", value = "*" },
         { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
-        { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" }
+        { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" },
+        { name = "S3_ENDPOINT", value = "https://s3.${var.region}.amazonaws.com" }
       ]
       secrets = [
         {
