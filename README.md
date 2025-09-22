@@ -47,19 +47,83 @@ terraform output alb_dns_name
 - `app_name`: Application name prefix (default: ysweet)
 - `container_port`: Container port (default: 8080)
 - `image`: Y-Sweet Docker image (default: ghcr.io/jamsocket/y-sweet)
+- `bucket_name`: Human-readable S3 bucket name for document storage
+- `auth_key`: Y-Sweet authentication key for production use
+- `create_ssl_cert`: Enable HTTPS with SSL certificate (default: false)
+- `domain_name`: Domain name for SSL certificate (required if create_ssl_cert = true)
 
 ### Environment Variables
 
 The container runs with:
 - `PORT`: Application port (8080)
 - `STORAGE_BUCKET`: S3 bucket name for document storage
+- `AUTH_KEY`: Authentication key for Y-Sweet
+- `AWS_ACCESS_KEY_ID`: IAM user access key for S3
+- `AWS_SECRET_ACCESS_KEY`: IAM user secret key for S3
+- `AWS_DEFAULT_REGION`: AWS region for S3 operations
+- `CORS_ALLOW_ORIGIN`: CORS origin policy (set to "*")
+- `CORS_ALLOW_METHODS`: Allowed HTTP methods
+- `CORS_ALLOW_HEADERS`: Allowed request headers
 
 ### Command Override
 
-The container runs Y-Sweet in multi-document mode:
+The container runs Y-Sweet in multi-document mode with authentication:
 ```bash
-y-sweet serve --host=0.0.0.0 s3://[BUCKET_NAME]
+y-sweet serve --host=0.0.0.0 --auth=$AUTH_KEY s3://[BUCKET_NAME]
 ```
+
+## Domain Setup
+
+### Setting up Custom Domain (Required for SSL)
+
+1. **Add CNAME record in your DNS provider**:
+   - **Type**: CNAME
+   - **Host**: `ysweet` (creates `ysweet.yourdomain.com`)
+   - **Value**: `your-alb-dns-name.us-east-1.elb.amazonaws.com`
+   - **TTL**: 300 seconds
+
+2. **Verify DNS propagation**:
+```bash
+# Check against your DNS provider directly
+dig @dns1.registrar-servers.com ysweet.yourdomain.com
+
+# Test from your location
+dig ysweet.yourdomain.com
+```
+
+3. **Test HTTP access**:
+Once DNS propagates, test: `http://ysweet.yourdomain.com`
+
+## SSL/HTTPS Setup (Optional)
+
+### Enabling HTTPS
+
+To enable HTTPS with SSL certificate:
+
+1. **Ensure domain is working** (see Domain Setup above)
+
+2. **Update terraform.tfvars**:
+```hcl
+create_ssl_cert = true
+domain_name     = "ysweet.yourdomain.com"
+```
+
+3. **Deploy the changes**:
+```bash
+terraform apply
+```
+
+4. **Add DNS validation records**:
+After deployment, add the CNAME record shown in Terraform output to your domain's DNS.
+
+5. **Wait for validation**:
+Certificate validation typically takes 5-10 minutes.
+
+### HTTPS Benefits
+- Secure WebSocket connections (`wss://`)
+- Automatic HTTP to HTTPS redirect
+- Better compatibility with strict CSP policies
+- Modern TLS 1.2+ security
 
 ## Usage
 
@@ -68,13 +132,54 @@ y-sweet serve --host=0.0.0.0 s3://[BUCKET_NAME]
 Y-Sweet will automatically create new documents when clients connect to new document IDs:
 
 ```javascript
-// WebSocket connection to create/join a document
+// HTTP connection
 const ws = new WebSocket('ws://your-alb-dns-name/doc/my-document-id');
+
+// HTTPS connection (if SSL enabled)
+const wss = new WebSocket('wss://your-domain.com/doc/my-document-id');
+```
+
+### Authentication
+
+All requests require authentication using the configured auth key:
+
+```javascript
+// Example with auth header
+const headers = { 'Authorization': 'Bearer your-auth-key' };
 ```
 
 ### Health Checks
 
 The ALB performs health checks on `/ready` endpoint.
+
+## Document Storage
+
+### Inspecting S3 Documents
+
+View all stored documents:
+```bash
+aws s3 ls s3://your-bucket-name --recursive --human-readable --summarize
+```
+
+Basic listing:
+```bash
+aws s3 ls s3://your-bucket-name
+```
+
+Watch for new documents (refreshes every 5 seconds):
+```bash
+watch -n 5 'aws s3 ls s3://your-bucket-name --recursive --human-readable'
+```
+
+Get document metadata:
+```bash
+aws s3api head-object --bucket your-bucket-name --key document-id/data.ysweet
+```
+
+### Document Format
+- Documents are stored as `.ysweet` files
+- Each document gets its own UUID-based folder
+- Format: `{document-uuid}/data.ysweet`
 
 ## Monitoring
 
@@ -94,9 +199,22 @@ terraform destroy
 - S3 bucket has server-side encryption enabled
 - IAM roles follow least privilege principle
 - ECS tasks only have necessary S3 permissions
-- Security groups restrict traffic to required ports
+- Security groups restrict traffic to required ports (80, 443)
+- Y-Sweet authentication required for all operations
+- Optional HTTPS/TLS encryption for secure connections
+- CORS configured to accept connections from any origin
 
 ## Troubleshooting
+
+### DNS Issues
+Check if domain is resolving correctly:
+```bash
+# Test against authoritative name server
+dig @dns1.registrar-servers.com ysweet.yourdomain.com
+
+# Test from your location
+nslookup ysweet.yourdomain.com
+```
 
 ### Check container logs
 ```bash
@@ -116,7 +234,12 @@ aws ecs describe-services \
 
 ### Check S3 bucket contents
 ```bash
-aws s3 ls s3://[BUCKET-NAME] --recursive
+aws s3 ls s3://y-sweet-crixet-dev-storage --recursive --human-readable
+```
+
+### Check certificate status (if SSL enabled)
+```bash
+aws acm describe-certificate --certificate-arn [CERT-ARN] --region us-east-1
 ```
 
 ### Restart the service
@@ -135,13 +258,31 @@ To follow the logs from the running container:
 aws logs tail /ecs/ysweet --follow --region us-east-1
 ```
 
-Or to get logs for a specific time period:
+### View all logs for current container
+Get current task ID and view all logs:
+```bash
+# Get current task ID
+aws ecs list-tasks --cluster ysweet-cluster --service-name ysweet-svc --region us-east-1
+
+# View all logs for specific task
+aws logs get-log-events \
+  --log-group-name "/ecs/ysweet" \
+  --log-stream-name "ecs/ysweet/[TASK-ID]" \
+  --region us-east-1
+```
+
+### Get recent logs (last hour)
 ```bash
 aws logs get-log-events \
   --log-group-name "/ecs/ysweet" \
   --log-stream-name "ecs/ysweet/[TASK-ID]" \
   --start-time $(date -d '1 hour ago' +%s)000 \
   --region us-east-1
+```
+
+### One-liner to get current logs
+```bash
+TASK_ID=$(aws ecs list-tasks --cluster ysweet-cluster --service-name ysweet-svc --region us-east-1 --query 'taskArns[0]' --output text | cut -d'/' -f3) && aws logs get-log-events --log-group-name "/ecs/ysweet" --log-stream-name "ecs/ysweet/$TASK_ID" --region us-east-1
 ```
 
 ## License

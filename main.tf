@@ -40,6 +40,18 @@ variable "auth_key" {
   sensitive   = true
 }
 
+variable "domain_name" {
+  type        = string
+  description = "Domain name for SSL certificate (e.g., ysweet.yourdomain.com)"
+  default     = ""
+}
+
+variable "create_ssl_cert" {
+  type        = bool
+  description = "Whether to create an SSL certificate and HTTPS listener"
+  default     = false
+}
+
 
 # ---------- S3 Storage Bucket ----------
 resource "aws_s3_bucket" "ysweet_storage" {
@@ -88,6 +100,13 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -124,7 +143,8 @@ resource "aws_lb" "this" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = data.aws_subnets.public.ids
 
-  idle_timeout               = 1200
+  # Increase idle timeout for WebSocket connections
+  idle_timeout               = 3600  # 1 hour for long-lived WebSocket connections
   enable_deletion_protection = false
 }
 
@@ -144,13 +164,66 @@ resource "aws_lb_target_group" "this" {
     matcher             = "200"
   }
 
-  deregistration_delay = 60
+  # Optimize for WebSocket connections
+  deregistration_delay = 30
+  
+  # Enable connection draining for WebSocket connections
+  stickiness {
+    enabled = false
+    type    = "lb_cookie"
+  }
 }
 
+# SSL Certificate (optional)
+resource "aws_acm_certificate" "this" {
+  count                     = var.create_ssl_cert ? 1 : 0
+  domain_name               = var.domain_name
+  validation_method         = "DNS"
+  
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_acm_certificate_validation" "this" {
+  count           = var.create_ssl_cert ? 1 : 0
+  certificate_arn = aws_acm_certificate.this[0].arn
+  
+  timeouts {
+    create = "5m"
+  }
+}
+
+# HTTP Listener
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
   protocol          = "HTTP"
+
+  default_action {
+    type = var.create_ssl_cert ? "redirect" : "forward"
+    
+    dynamic "redirect" {
+      for_each = var.create_ssl_cert ? [1] : []
+      content {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+    
+    target_group_arn = var.create_ssl_cert ? null : aws_lb_target_group.this.arn
+  }
+}
+
+# HTTPS Listener (optional)
+resource "aws_lb_listener" "https" {
+  count             = var.create_ssl_cert ? 1 : 0
+  load_balancer_arn = aws_lb.this.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  certificate_arn   = aws_acm_certificate_validation.this[0].certificate_arn
 
   default_action {
     type             = "forward"
@@ -277,7 +350,10 @@ resource "aws_ecs_task_definition" "this" {
         { name = "AUTH_KEY", value = var.auth_key },
         { name = "AWS_ACCESS_KEY_ID", value = aws_iam_access_key.ysweet_s3_access_key.id },
         { name = "AWS_SECRET_ACCESS_KEY", value = aws_iam_access_key.ysweet_s3_access_key.secret },
-        { name = "AWS_DEFAULT_REGION", value = var.region }
+        { name = "AWS_DEFAULT_REGION", value = var.region },
+        { name = "CORS_ALLOW_ORIGIN", value = "*" },
+        { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
+        { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With" }
       ]
       logConfiguration = {
         logDriver = "awslogs",
@@ -326,4 +402,12 @@ output "alb_dns_name" {
 
 output "s3_bucket_name" {
   value = aws_s3_bucket.ysweet_storage.bucket
+}
+
+output "ssl_certificate_arn" {
+  value = var.create_ssl_cert ? aws_acm_certificate.this[0].arn : null
+}
+
+output "application_url" {
+  value = var.create_ssl_cert ? "https://${var.domain_name}" : "http://${aws_lb.this.dns_name}"
 }
