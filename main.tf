@@ -420,3 +420,156 @@ output "ssl_certificate_arn" {
 output "application_url" {
   value = var.create_ssl_cert ? "https://${var.domain_name}" : "http://${aws_lb.this.dns_name}"
 }
+
+# ---------- CloudWatch Dashboard ----------
+resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
+  dashboard_name = "${var.app_name}-dashboard"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AWS/ECS", "CPUUtilization", "ServiceName", aws_ecs_service.this.name, "ClusterName", aws_ecs_cluster.this.name],
+            [".", "MemoryUtilization", ".", ".", ".", "."]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.region
+          title   = "ECS Service - CPU & Memory Utilization"
+          period  = 300
+          stat    = "Average"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.this.arn_suffix],
+            [".", "TargetResponseTime", ".", "."],
+            [".", "HTTPCode_Target_2XX_Count", ".", "."],
+            [".", "HTTPCode_Target_4XX_Count", ".", "."],
+            [".", "HTTPCode_Target_5XX_Count", ".", "."]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.region
+          title   = "ALB - Request Count & Response Times"
+          period  = 300
+          stat    = "Sum"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AWS/ECS", "RunningTaskCount", "ServiceName", aws_ecs_service.this.name, "ClusterName", aws_ecs_cluster.this.name],
+            [".", "PendingTaskCount", ".", ".", ".", "."],
+            [".", "DesiredCount", ".", ".", ".", "."]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.region
+          title   = "ECS Service - Task Counts"
+          period  = 300
+          stat    = "Average"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AWS/ApplicationELB", "ActiveConnectionCount", "LoadBalancer", aws_lb.this.arn_suffix],
+            [".", "NewConnectionCount", ".", "."],
+            [".", "RejectedConnectionCount", ".", "."]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.region
+          title   = "ALB - Connection Metrics"
+          period  = 300
+          stat    = "Sum"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 12
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AWS/ApplicationELB", "HealthyHostCount", "TargetGroup", aws_lb_target_group.this.arn_suffix],
+            [".", "UnHealthyHostCount", ".", "."]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.region
+          title   = "Target Group - Health Status"
+          period  = 300
+          stat    = "Average"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 12
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AWS/S3", "BucketSizeBytes", "BucketName", aws_s3_bucket.ysweet_storage.bucket, "StorageType", "StandardStorage"],
+            [".", "NumberOfObjects", ".", ".", ".", "AllStorageTypes"]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.region
+          title   = "S3 Storage - Bucket Size & Object Count"
+          period  = 86400
+          stat    = "Average"
+        }
+      },
+      {
+        type   = "log"
+        x      = 0
+        y      = 18
+        width  = 24
+        height = 6
+
+        properties = {
+          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 100"
+          region  = var.region
+          title   = "Recent Error Logs"
+          view    = "table"
+        }
+      }
+    ]
+  })
+}
+
+output "dashboard_url" {
+  value = "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#dashboards:name=${aws_cloudwatch_dashboard.ysweet_dashboard.dashboard_name}"
+}

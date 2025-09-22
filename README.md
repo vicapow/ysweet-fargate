@@ -285,6 +285,42 @@ aws logs get-log-events \
 TASK_ID=$(aws ecs list-tasks --cluster ysweet-cluster --service-name ysweet-svc --region us-east-1 --query 'taskArns[0]' --output text | cut -d'/' -f3) && aws logs get-log-events --log-group-name "/ecs/ysweet" --log-stream-name "ecs/ysweet/$TASK_ID" --region us-east-1
 ```
 
+## CloudWatch Dashboard
+
+A comprehensive monitoring dashboard is automatically created for your Y-Sweet deployment. After deployment, you can access it at:
+
+```
+https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=ysweet-dashboard
+```
+
+The dashboard includes the following monitoring widgets:
+
+### 📊 **Performance Metrics**
+- **CPU & Memory Utilization**: Track ECS service resource usage
+- **Task Counts**: Monitor running, pending, and desired task counts
+- **Request Metrics**: View ALB request count, response times, and HTTP status codes
+
+### 🔗 **Connection Metrics**
+- **ALB Connections**: Active, new, and rejected connection counts
+- **Health Status**: Healthy vs unhealthy target counts
+- **WebSocket Support**: Monitor long-lived connection performance
+
+### 💾 **Storage Metrics**
+- **S3 Bucket Size**: Track document storage growth
+- **Object Count**: Monitor number of Y-Sweet documents
+
+### 📋 **Error Monitoring**
+- **Recent Error Logs**: Real-time view of application errors from CloudWatch logs
+
+### 🎯 **Key Metrics to Watch**
+- **CPU > 80%**: Consider scaling up if sustained
+- **Memory > 80%**: Monitor for memory leaks or increase allocation
+- **4XX/5XX Errors**: Investigate application or infrastructure issues
+- **Unhealthy Targets**: Check container health and startup time
+- **High Response Time**: Monitor WebSocket upgrade and document operations
+
+The dashboard automatically refreshes and provides 5-minute granularity for most metrics, with S3 metrics updating daily.
+
 ## License
 
 This infrastructure code is provided as-is. Y-Sweet itself is licensed under its own terms.
