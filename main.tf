@@ -166,12 +166,6 @@ resource "aws_lb_target_group" "this" {
 
   # Optimize for WebSocket connections
   deregistration_delay = 30
-  
-  # Enable connection draining for WebSocket connections
-  stickiness {
-    enabled = false
-    type    = "lb_cookie"
-  }
 }
 
 # SSL Certificate (optional)
@@ -212,7 +206,14 @@ resource "aws_lb_listener" "http" {
       }
     }
     
-    target_group_arn = var.create_ssl_cert ? null : aws_lb_target_group.this.arn
+    dynamic "forward" {
+      for_each = var.create_ssl_cert ? [] : [1]
+      content {
+        target_group {
+          arn = aws_lb_target_group.this.arn
+        }
+      }
+    }
   }
 }
 
@@ -226,8 +227,16 @@ resource "aws_lb_listener" "https" {
   certificate_arn   = aws_acm_certificate_validation.this[0].certificate_arn
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.this.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn = aws_lb_target_group.this.arn
+      }
+      stickiness {
+        enabled  = false
+        duration = 1
+      }
+    }
   }
 }
 
@@ -340,7 +349,7 @@ resource "aws_ecs_task_definition" "this" {
       name      = var.app_name
       image     = var.image
       essential = true
-      command   = ["sh", "-c", "y-sweet serve --host=0.0.0.0 --auth=$AUTH_KEY s3://$STORAGE_BUCKET"]
+      command   = ["sh", "-c", "y-sweet serve --url-prefix=${var.create_ssl_cert ? "https" : "http"}://${var.create_ssl_cert ? var.domain_name : aws_lb.this.dns_name}/ --host=0.0.0.0 --auth=$AUTH_KEY s3://$STORAGE_BUCKET"]
       portMappings = [
         { containerPort = var.container_port, protocol = "tcp" }
       ]
@@ -353,7 +362,7 @@ resource "aws_ecs_task_definition" "this" {
         { name = "AWS_DEFAULT_REGION", value = var.region },
         { name = "CORS_ALLOW_ORIGIN", value = "*" },
         { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
-        { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With" }
+        { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" }
       ]
       logConfiguration = {
         logDriver = "awslogs",

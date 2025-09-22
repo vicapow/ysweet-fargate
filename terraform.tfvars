@@ -7,5 +7,5 @@ auth_key       = "your-secure-auth-key-change-this"
 
 # SSL Configuration (optional)
 # Set create_ssl_cert = true and provide domain_name to enable HTTPS
-create_ssl_cert = false
+create_ssl_cert = true
 domain_name     = "ysweet.crixet.com"
