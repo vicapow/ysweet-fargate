@@ -1,578 +1,318 @@
 # Y-Sweet Multi-Document Server on AWS Fargate
 
-This repository contains Terraform configuration to deploy [Y-Sweet](https://github.com/jamsocket/y-sweet), a Yjs sync server for real-time collaborative applications, on AWS Fargate with S3 storage.
+[![Terraform](https://img.shields.io/badge/Terraform-≥1.0-7C3AED?logo=terraform)](https://www.terraform.io/)
+[![AWS](https://img.shields.io/badge/AWS-Fargate-FF9900?logo=amazon-aws)](https://aws.amazon.com/fargate/)
+[![Y-Sweet](https://img.shields.io/badge/Y--Sweet-Real--time_Collaboration-4F46E5)](https://github.com/jamsocket/y-sweet)
 
-## Architecture
+Production-ready Terraform infrastructure for deploying [Y-Sweet](https://github.com/jamsocket/y-sweet), a high-performance collaborative document server built on Yjs. Optimized for real-time collaborative editing (think Google Docs-style live collaboration) with enterprise-grade monitoring and security.
 
-This infrastructure deploys **Y-Sweet**, a collaborative document server built on Yjs for real-time collaborative editing (think Google Docs-style live collaboration). The setup is optimized for WebSocket connections and high-throughput document synchronization.
-
-### 🏗️ **Infrastructure Components**
-
-#### **1. Core Application (ECS Fargate)**
-- **ECS Cluster**: Managed container orchestration
-- **Fargate Task**: Single task with **4 vCPU + 8GB RAM** ("beast mode" for high concurrency)
-- **Container**: Runs `y-sweet serve` with S3 backend storage
-- **Networking**: Uses default VPC with public subnets and assigned public IPs
-
-#### **2. Load Balancer & SSL**
-- **Application Load Balancer (ALB)**: Internet-facing, handles HTTP/HTTPS traffic
-- **Target Group**: Health checks on `/ready` endpoint with WebSocket optimizations
-- **SSL Certificate**: Optional ACM certificate with DNS validation
-- **Smart Routing**: 
-  - SSL enabled: HTTP (80) → redirects to HTTPS (443)
-  - SSL disabled: HTTP (80) → forwards directly to container
-- **WebSocket Optimized**: 
-  - 1-hour idle timeout for long-lived connections
-  - 30-second deregistration delay for graceful shutdowns
-
-#### **3. Storage Layer**
-- **S3 Bucket**: Stores Y-Sweet documents with versioning and server-side encryption
-- **Dual IAM Access Strategy**:
-  - **ECS Task Role**: For container to access S3 via AWS SDK
-  - **IAM User + Access Keys**: Programmatic access (passed as environment variables)
-
-#### **4. Security**
-- **ALB Security Group**: Allows HTTP (80) + HTTPS (443) from internet (0.0.0.0/0)
-- **Task Security Group**: Restricts access to container port (8080) only from ALB
-- **S3 Security**: Server-side encryption (AES256), public access blocked
-- **Authentication**: Y-Sweet auth key required for all document operations
-
-#### **5. Monitoring & Observability**
-- **CloudWatch Logs**: Container logs with 7-day retention
-- **Log Metric Filters**: Automatically tracks INFO/WARN/ERROR/TOTAL log counts
-- **Comprehensive Dashboard**: Real-time monitoring of:
-  - ECS metrics (CPU, memory, task health)
-  - ALB performance (requests, response times, connections)
-  - S3 storage metrics (bucket size, object count)
-  - Document save activity and error tracking
-
-### 🔄 **Data Flow**
-
-```
-Internet → ALB (HTTP/HTTPS) → ECS Fargate Task → Y-Sweet Server
-                                       ↓
-                              S3 Bucket (Document Storage)
-                                       ↓
-                            CloudWatch Logs (Monitoring)
-```
-
-### 🎯 **Use Case**
-
-Perfect for hosting **collaborative document editing services** where:
-- Multiple users edit documents simultaneously in real-time
-- Changes sync instantly via WebSocket connections
-- Document state persists reliably in S3 with versioning
-- High availability with load balancing and health checks
-- Secure SSL termination for production use
-- Comprehensive monitoring for production operations
-
-### ⚡ **Performance Characteristics**
-
-- **High Concurrency**: 4 vCPU/8GB handles significant concurrent WebSocket connections
-- **Low Latency**: Direct WebSocket upgrades through ALB
-- **Scalable Storage**: S3 backend with versioning for document history
-- **Fault Tolerant**: Health checks ensure service availability
-- **Production Ready**: SSL/TLS, monitoring, and security best practices
-
-## Prerequisites
-
-- AWS CLI configured with appropriate credentials
-- Terraform installed (>= 1.0)
-- Docker (for local testing/debugging)
-
-## Deployment
-
-### 1. Setup Remote State (Recommended)
-
-For production use, configure Terraform to store state remotely in S3:
+## 🚀 Quick Start
 
 ```bash
-# Run the setup script to create S3 bucket and configure backend
+# 1. Setup remote state (recommended)
 ./setup-remote-state.sh
-```
 
-This script will:
-- Create an S3 bucket for Terraform state with encryption and versioning
-- Automatically add the backend configuration to `main.tf`
-- Set up state locking using S3's native capabilities (no DynamoDB needed)
+# 2. Configure your deployment
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your values
 
-### 2. Initialize Terraform
-```bash
+# 3. Deploy
 terraform init
-```
-
-If you ran the remote state setup, Terraform will offer to migrate your existing local state to S3. Choose "yes" when prompted.
-
-### 3. Review the deployment plan
-```bash
-terraform plan
-```
-
-### 4. Deploy the infrastructure
-```bash
 terraform apply
+
+# 4. Access your application
+terraform output application_url
 ```
 
-### 5. Get the application URL
-After deployment, the ALB DNS name will be output:
+## 🏗️ Architecture
+
+### **High-Level Overview**
+```
+Internet → ALB (HTTP/HTTPS) → ECS Fargate → Y-Sweet Server
+                                    ↓
+                         S3 Bucket (Document Storage)
+                                    ↓
+                       CloudWatch (Monitoring & Logs)
+```
+
+### **Infrastructure Components**
+
+| Component | Purpose | Specifications |
+|-----------|---------|----------------|
+| **ECS Fargate** | Container orchestration | 4 vCPU + 8GB RAM ("beast mode") |
+| **Application Load Balancer** | Traffic routing & SSL | WebSocket optimized (1h timeout) |
+| **S3 Storage** | Document persistence | Versioned, encrypted, metrics enabled |
+| **CloudWatch** | Monitoring & logging | Comprehensive dashboards + cost tracking |
+| **ACM Certificate** | SSL/TLS termination | Optional, DNS validated |
+| **Security Groups** | Network security | Minimal access (ALB → ECS only) |
+
+### **Key Features**
+- ✅ **High Concurrency**: Handles significant concurrent WebSocket connections
+- ✅ **Real-time Sync**: Optimized for collaborative document editing
+- ✅ **Production Ready**: SSL/TLS, monitoring, security best practices
+- ✅ **Cost Monitoring**: Real-time AWS cost tracking
+- ✅ **Auto-scaling Ready**: Easy to extend with auto-scaling groups
+- ✅ **Fault Tolerant**: Health checks and graceful degradation
+
+## 📁 Project Structure
+
+This project follows Terraform best practices with modular file organization:
+
+```
+├── main.tf           # Documentation & architecture overview
+├── versions.tf       # Terraform & provider configuration  
+├── variables.tf      # Input variables with descriptions
+├── outputs.tf        # Output values & dashboard links
+├── storage.tf        # S3 bucket & metrics configuration
+├── networking.tf     # VPC, ALB, security groups, SSL
+├── compute.tf        # ECS cluster, tasks, IAM roles
+├── monitoring.tf     # CloudWatch logs, metrics, queries
+├── dashboard.tf      # CloudWatch dashboard widgets
+├── terraform.tfvars # Your configuration values
+└── setup-remote-state.sh # S3 backend setup script
+```
+
+Each file has a single responsibility, making the infrastructure easy to understand, maintain, and collaborate on.
+
+## ⚙️ Configuration
+
+### **Required Variables**
+
+Create `terraform.tfvars` with these required values:
+
+```hcl
+# Required
+image       = "your-account.dkr.ecr.region.amazonaws.com/y-sweet:latest"
+bucket_name = "your-ysweet-storage-bucket"
+auth_key    = "your-secure-authentication-key"
+
+# Optional SSL setup
+create_ssl_cert = true
+domain_name     = "ysweet.yourdomain.com"
+
+# Optional customization
+region          = "us-east-1"
+app_name        = "ysweet"
+container_port  = 8080
+```
+
+### **All Available Variables**
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `region` | string | `us-east-1` | AWS region for deployment |
+| `app_name` | string | `ysweet` | Application name prefix |
+| `container_port` | number | `8080` | Container port for Y-Sweet |
+| `image` | string | **required** | Y-Sweet Docker image URI |
+| `bucket_name` | string | **required** | S3 bucket for document storage |
+| `auth_key` | string | **required** | Y-Sweet authentication key |
+| `domain_name` | string | `""` | Domain for SSL certificate |
+| `create_ssl_cert` | bool | `false` | Whether to create SSL certificate |
+
+## 📊 Monitoring & Observability
+
+### **CloudWatch Dashboard**
+Comprehensive real-time monitoring automatically deployed:
+
 ```bash
+terraform output dashboard_url
+```
+
+**Includes:**
+- ECS performance (CPU, memory, task health)
+- ALB metrics (requests, response times, connections)
+- S3 storage tracking (size, object count)
+- Cost monitoring (total + per-service breakdown)
+- Error analysis and log insights
+
+### **CloudWatch Logs Insights**
+Pre-configured saved queries for advanced log analysis:
+
+```bash
+terraform output cloudwatch_insights_url
+```
+
+**Available Queries:**
+- `ysweet-websocket-connections` - WebSocket activity patterns
+- `ysweet-document-operations` - Document save/load tracking  
+- `ysweet-error-analysis` - Error pattern analysis
+- `ysweet-performance-monitoring` - Timing and performance metrics
+
+### **Cost Monitoring Setup**
+Enable real-time cost tracking (one-time setup):
+
+1. Visit: `terraform output billing_dashboard_setup`
+2. Enable "Receive Billing Alerts"
+3. Cost widgets will populate within 24 hours
+
+## 🔒 SSL/HTTPS Setup
+
+### **1. Domain Configuration**
+Set up your domain to point to the load balancer:
+
+```bash
+# Get your ALB DNS name
 terraform output alb_dns_name
+
+# Add CNAME record:
+# Host: ysweet
+# Value: your-alb-dns-name.region.elb.amazonaws.com
 ```
 
-## Configuration
+### **2. Enable SSL**
+Update `terraform.tfvars`:
 
-### Variables (terraform.tfvars)
-
-- `region`: AWS region (default: us-east-1)
-- `app_name`: Application name prefix (default: ysweet)
-- `container_port`: Container port (default: 8080)
-- `image`: Y-Sweet Docker image (default: ghcr.io/jamsocket/y-sweet)
-- `bucket_name`: Human-readable S3 bucket name for document storage
-- `auth_key`: Y-Sweet authentication key for production use
-- `create_ssl_cert`: Enable HTTPS with SSL certificate (default: false)
-- `domain_name`: Domain name for SSL certificate (required if create_ssl_cert = true)
-
-### Environment Variables
-
-The container runs with:
-- `PORT`: Application port (8080)
-- `STORAGE_BUCKET`: S3 bucket name for document storage
-- `AUTH_KEY`: Authentication key for Y-Sweet
-- `AWS_ACCESS_KEY_ID`: IAM user access key for S3
-- `AWS_SECRET_ACCESS_KEY`: IAM user secret key for S3
-- `AWS_DEFAULT_REGION`: AWS region for S3 operations
-- `CORS_ALLOW_ORIGIN`: CORS origin policy (set to "*")
-- `CORS_ALLOW_METHODS`: Allowed HTTP methods
-- `CORS_ALLOW_HEADERS`: Allowed request headers
-
-### Command Override
-
-The container runs Y-Sweet in multi-document mode with authentication:
-```bash
-y-sweet serve --host=0.0.0.0 --auth=$AUTH_KEY s3://[BUCKET_NAME]
-```
-
-## Domain Setup
-
-### Setting up Custom Domain (Required for SSL)
-
-1. **Add CNAME record in your DNS provider**:
-   - **Type**: CNAME
-   - **Host**: `ysweet` (creates `ysweet.yourdomain.com`)
-   - **Value**: `your-alb-dns-name.us-east-1.elb.amazonaws.com`
-   - **TTL**: 300 seconds
-
-2. **Verify DNS propagation**:
-```bash
-# Check against your DNS provider directly
-dig @dns1.registrar-servers.com ysweet.yourdomain.com
-
-# Test from your location
-dig ysweet.yourdomain.com
-```
-
-3. **Test HTTP access**:
-Once DNS propagates, test: `http://ysweet.yourdomain.com`
-
-## SSL/HTTPS Setup (Optional)
-
-### Enabling HTTPS
-
-To enable HTTPS with SSL certificate:
-
-1. **Ensure domain is working** (see Domain Setup above)
-
-2. **Update terraform.tfvars**:
 ```hcl
 create_ssl_cert = true
 domain_name     = "ysweet.yourdomain.com"
 ```
 
-3. **Deploy the changes**:
 ```bash
 terraform apply
 ```
 
-4. **Add DNS validation records**:
-After deployment, add the CNAME record shown in Terraform output to your domain's DNS.
+### **3. DNS Validation**
+Add the CNAME validation record shown in Terraform output to your DNS. Certificate validation typically takes 5-10 minutes.
 
-5. **Wait for validation**:
-Certificate validation typically takes 5-10 minutes.
-
-### HTTPS Benefits
+**Benefits:**
 - Secure WebSocket connections (`wss://`)
-- Automatic HTTP to HTTPS redirect
-- Better compatibility with strict CSP policies
+- Automatic HTTP → HTTPS redirect
 - Modern TLS 1.2+ security
 
-## Usage
+## 🔧 Usage
 
-### Creating Documents
+### **Document Operations**
 
-Y-Sweet will automatically create new documents when clients connect to new document IDs:
-
-```javascript
-// HTTP connection
-const ws = new WebSocket('ws://your-alb-dns-name/doc/my-document-id');
-
-// HTTPS connection (if SSL enabled)
-const wss = new WebSocket('wss://your-domain.com/doc/my-document-id');
-```
-
-### Authentication
-
-All requests require authentication using the configured auth key:
+Y-Sweet automatically creates documents when clients connect:
 
 ```javascript
-// Example with auth header
+// WebSocket connection
+const ws = new WebSocket('wss://ysweet.yourdomain.com/doc/my-document-id');
+
+// Authentication required
 const headers = { 'Authorization': 'Bearer your-auth-key' };
 ```
 
-### Health Checks
+### **Document Storage**
 
-The ALB performs health checks on `/ready` endpoint.
-
-## Document Storage
-
-### Inspecting S3 Documents
-
-View all stored documents:
-```bash
-aws s3 ls s3://your-bucket-name --recursive --human-readable --summarize
+Documents are stored in S3 with this structure:
+```
+s3://your-bucket/
+├── {document-uuid-1}/data.ysweet
+├── {document-uuid-2}/data.ysweet
+└── ...
 ```
 
-Basic listing:
+**Inspect documents:**
 ```bash
-aws s3 ls s3://your-bucket-name
+# List all documents
+aws s3 ls s3://$(terraform output -raw s3_bucket_name) --recursive --human-readable
+
+# Watch for new documents
+watch -n 5 'aws s3 ls s3://$(terraform output -raw s3_bucket_name) --recursive'
 ```
 
-Watch for new documents (refreshes every 5 seconds):
+## 🔍 Troubleshooting
+
+### **Common Issues**
+
+**Container not starting:**
 ```bash
-watch -n 5 'aws s3 ls s3://your-bucket-name --recursive --human-readable'
+# Check ECS service status
+aws ecs describe-services --cluster ysweet-cluster --services ysweet-svc
+
+# View logs
+aws logs tail /ecs/ysweet --follow
 ```
 
-Get document metadata:
+**SSL certificate issues:**
 ```bash
-aws s3api head-object --bucket your-bucket-name --key document-id/data.ysweet
+# Check certificate status
+aws acm describe-certificate --certificate-arn $(terraform output ssl_certificate_arn)
 ```
 
-### Document Format
-- Documents are stored as `.ysweet` files
-- Each document gets its own UUID-based folder
-- Format: `{document-uuid}/data.ysweet`
+**S3 metrics not showing:**
+- Metrics appear 24-48 hours after bucket has data
+- Verify metrics are enabled: `aws s3api get-bucket-metrics-configuration --bucket $(terraform output -raw s3_bucket_name) --id EntireBucket`
 
-## Monitoring
+**Cost monitoring not working:**
+- Enable billing alerts in AWS Console (see Cost Monitoring section)
+- Metrics update once daily
 
-- **CloudWatch Logs**: `/ecs/ysweet` log group
-- **ECS Console**: Monitor service health and task status
-- **ALB Target Groups**: Check target health status
+### **Useful Commands**
 
-## Cleanup
+```bash
+# Force service restart
+aws ecs update-service --cluster ysweet-cluster --service ysweet-svc --force-new-deployment
 
-To destroy all resources:
+# Get current logs
+TASK_ID=$(aws ecs list-tasks --cluster ysweet-cluster --service-name ysweet-svc --query 'taskArns[0]' --output text | cut -d'/' -f3)
+aws logs get-log-events --log-group-name "/ecs/ysweet" --log-stream-name "ecs/ysweet/$TASK_ID"
+
+# Check domain resolution
+dig ysweet.yourdomain.com
+```
+
+## 🔗 Quick Access Links
+
+Get all important URLs with Terraform outputs:
+
+```bash
+# Application & monitoring
+terraform output application_url          # Your Y-Sweet application
+terraform output dashboard_url            # CloudWatch monitoring dashboard
+terraform output cloudwatch_insights_url  # Advanced log analysis
+
+# Setup & configuration  
+terraform output billing_dashboard_setup  # Enable cost monitoring
+terraform output s3_bucket_name          # Your document storage bucket
+```
+
+## 🏗️ Infrastructure Management
+
+### **Remote State (Recommended)**
+
+Use S3 backend for production deployments:
+
+```bash
+./setup-remote-state.sh
+terraform init  # Migrate existing state when prompted
+```
+
+**Benefits:**
+- Team collaboration
+- State locking
+- Backup and versioning
+- No single point of failure
+
+### **Scaling Considerations**
+
+This infrastructure can be extended with:
+- **Auto Scaling Groups** for automatic scaling
+- **Multiple AZs** for higher availability  
+- **CloudFront CDN** for global performance
+- **RDS** for session/metadata storage
+- **ElastiCache** for caching layer
+
+### **Security Best Practices**
+
+- ✅ IAM roles with least privilege
+- ✅ Security groups with minimal access
+- ✅ S3 encryption at rest
+- ✅ HTTPS/TLS in transit
+- ✅ VPC network isolation
+- ✅ Authentication required for all operations
+
+## 🧹 Cleanup
+
+Remove all infrastructure:
+
 ```bash
 terraform destroy
 ```
 
-## Security
+**Note:** This will permanently delete all documents in S3. Export any important data first.
 
-- S3 bucket has server-side encryption enabled
-- IAM roles follow least privilege principle
-- ECS tasks only have necessary S3 permissions
-- Security groups restrict traffic to required ports (80, 443)
-- Y-Sweet authentication required for all operations
-- Optional HTTPS/TLS encryption for secure connections
-- CORS configured to accept connections from any origin
+## 📄 License
 
-## Troubleshooting
-
-### DNS Issues
-Check if domain is resolving correctly:
-```bash
-# Test against authoritative name server
-dig @dns1.registrar-servers.com ysweet.yourdomain.com
-
-# Test from your location
-nslookup ysweet.yourdomain.com
-```
-
-### Check container logs
-```bash
-aws logs get-log-events \
-  --log-group-name "/ecs/ysweet" \
-  --log-stream-name "ecs/ysweet/[TASK-ID]" \
-  --region us-east-1
-```
-
-### Check ECS service status
-```bash
-aws ecs describe-services \
-  --cluster ysweet-cluster \
-  --services ysweet-svc \
-  --region us-east-1
-```
-
-### Check S3 bucket contents
-```bash
-aws s3 ls s3://y-sweet-crixet-dev-storage --recursive --human-readable
-```
-
-### Check certificate status (if SSL enabled)
-```bash
-aws acm describe-certificate --certificate-arn [CERT-ARN] --region us-east-1
-```
-
-### Restart the service
-To force a restart/redeploy of the Y-Sweet service:
-```bash
-aws ecs update-service \
-  --cluster ysweet-cluster \
-  --service ysweet-svc \
-  --force-new-deployment \
-  --region us-east-1
-```
-
-### Tail container logs in real-time
-To follow the logs from the running container:
-```bash
-aws logs tail /ecs/ysweet --follow --region us-east-1
-```
-
-### View all logs for current container
-Get current task ID and view all logs:
-```bash
-# Get current task ID
-aws ecs list-tasks --cluster ysweet-cluster --service-name ysweet-svc --region us-east-1
-
-# View all logs for specific task
-aws logs get-log-events \
-  --log-group-name "/ecs/ysweet" \
-  --log-stream-name "ecs/ysweet/[TASK-ID]" \
-  --region us-east-1
-```
-
-### Get recent logs (last hour)
-```bash
-aws logs get-log-events \
-  --log-group-name "/ecs/ysweet" \
-  --log-stream-name "ecs/ysweet/[TASK-ID]" \
-  --start-time $(date -d '1 hour ago' +%s)000 \
-  --region us-east-1
-```
-
-### One-liner to get current logs
-```bash
-TASK_ID=$(aws ecs list-tasks --cluster ysweet-cluster --service-name ysweet-svc --region us-east-1 --query 'taskArns[0]' --output text | cut -d'/' -f3) && aws logs get-log-events --log-group-name "/ecs/ysweet" --log-stream-name "ecs/ysweet/$TASK_ID" --region us-east-1
-```
-
-### S3 Storage Metrics Not Showing in Dashboard
-
-If the "S3 Storage - Bucket Size & Object Count (Daily)" dashboard widget shows no data:
-
-1. **Check if metrics are enabled** (should be handled by Terraform):
-```bash
-aws s3api get-bucket-metrics-configuration --bucket $(terraform output -raw s3_bucket_name) --id EntireBucket
-```
-
-2. **Verify bucket has data**:
-```bash
-aws s3 ls s3://$(terraform output -raw s3_bucket_name) --recursive --human-readable --summarize
-```
-
-3. **Check if CloudWatch metrics exist**:
-```bash
-aws cloudwatch list-metrics --namespace AWS/S3 --metric-name BucketSizeBytes --dimensions Name=BucketName,Value=$(terraform output -raw s3_bucket_name)
-```
-
-**Note**: S3 storage metrics are updated **once daily** and may take 24-48 hours to appear after enabling metrics configuration. The metrics will only show data from the point when metrics were enabled forward.
-
-## Observability & Monitoring
-
-### 📊 **CloudWatch Dashboard**
-
-A comprehensive monitoring dashboard is automatically created with your deployment:
-
-```bash
-# Access your main dashboard
-terraform output dashboard_url
-```
-
-**Direct link:** `https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=ysweet-dashboard`
-
-The dashboard includes the following monitoring widgets:
-
-### 📊 **Performance Metrics**
-- **CPU & Memory Utilization**: Track ECS service resource usage
-- **Task Counts**: Monitor running, pending, and desired task counts
-- **Request Metrics**: View ALB request count, response times, and HTTP status codes
-
-### 🔗 **Connection Metrics**
-- **ALB Connections**: Active, new, and rejected connection counts
-- **Health Status**: Healthy vs unhealthy target counts
-- **WebSocket Support**: Monitor long-lived connection performance
-
-### 💾 **Storage Metrics**
-- **S3 Bucket Size**: Track document storage growth
-- **Object Count**: Monitor number of Y-Sweet documents
-
-### 📋 **Error Monitoring**
-- **Recent Error Logs**: Real-time view of application errors from CloudWatch logs
-
-### 🎯 **Key Metrics to Watch**
-- **CPU > 80%**: Consider scaling up if sustained
-- **Memory > 80%**: Monitor for memory leaks or increase allocation
-- **4XX/5XX Errors**: Investigate application or infrastructure issues
-- **Unhealthy Targets**: Check container health and startup time
-- **High Response Time**: Monitor WebSocket upgrade and document operations
-
-The dashboard automatically refreshes and provides 5-minute granularity for most metrics, with S3 metrics updating daily.
-
-### 🔍 **CloudWatch Logs Insights**
-
-Advanced log analysis with pre-configured saved queries:
-
-```bash
-# Access CloudWatch Insights console
-terraform output cloudwatch_insights_url
-```
-
-**Direct link:** `https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#logs:insights`
-
-#### **Pre-configured Saved Queries**
-
-The following saved queries are automatically created for easy log analysis:
-
-1. **`ysweet-websocket-connections`**
-   ```sql
-   fields @timestamp, @message
-   | filter @message like /WebSocket/
-   | stats count() as connections by bin(5m)
-   | sort @timestamp desc
-   ```
-   *Monitors WebSocket connection patterns and volume*
-
-2. **`ysweet-document-operations`**
-   ```sql
-   fields @timestamp, @message
-   | filter @message like /Persisting snapshot/ or @message like /Loading document/
-   | parse @message "size=* " as doc_size
-   | stats count() as operations, avg(doc_size) as avg_size by bin(5m)
-   | sort @timestamp desc
-   ```
-   *Tracks document save/load operations and sizes*
-
-3. **`ysweet-error-analysis`**
-   ```sql
-   fields @timestamp, @message
-   | filter @message like /ERROR/ or @message like /WARN/ or @message like /Failed/
-   | stats count() as error_count by @message
-   | sort error_count desc
-   | limit 20
-   ```
-   *Analyzes error patterns and frequency*
-
-4. **`ysweet-performance-monitoring`**
-   ```sql
-   fields @timestamp, @message
-   | filter @message like /ms/ or @message like /seconds/
-   | parse @message /(?<duration>\d+)(ms|seconds)/
-   | stats avg(duration) as avg_duration, max(duration) as max_duration by bin(5m)
-   | sort @timestamp desc
-   ```
-   *Monitors performance metrics and timing*
-
-#### **Custom Log Analysis**
-
-You can also run custom queries directly:
-
-```bash
-# Example: Find recent WebSocket activity
-aws logs start-query \
-  --log-group-name "/ecs/ysweet" \
-  --start-time $(date -d '1 hour ago' +%s) \
-  --end-time $(date +%s) \
-  --query-string 'fields @timestamp, @message | filter @message like /WebSocket/ | sort @timestamp desc | limit 20'
-```
-
-### 💰 **Cost Monitoring**
-
-Real-time AWS cost tracking integrated into your dashboard:
-
-#### **Setup Required (One-time)**
-```bash
-# Get the setup link
-terraform output billing_dashboard_setup
-```
-
-**Manual step:** Visit `https://console.aws.amazon.com/billing/home#/preferences` and enable:
-- ✅ **Receive Billing Alerts**
-
-This enables the cost monitoring widgets in your dashboard.
-
-#### **Cost Dashboard Widgets**
-- **Total Monthly Charges**: Account-wide estimated costs
-- **Service Breakdown**: Costs by service (ECS, S3, EC2, CloudWatch)
-- **Daily Tracking**: 24-hour cost accumulation
-
-**Note**: Billing metrics update once daily and may take 24 hours to appear after enabling billing alerts.
-
-## Manual Setup Requirements
-
-Some AWS features require manual configuration outside of Terraform:
-
-### 📊 **Billing Alerts (Required for Cost Monitoring)**
-
-**Why manual?** AWS billing preferences can't be managed via Terraform for security reasons.
-
-**Setup steps:**
-1. Visit: `https://console.aws.amazon.com/billing/home#/preferences`
-2. Enable: ✅ **Receive Billing Alerts**
-3. Cost widgets will populate within 24 hours
-
-**Alternative CLI approach** (may not work in all accounts):
-```bash
-# Attempt to enable via Budgets API (creates a minimal budget)
-aws budgets create-budget \
-  --account-id $(aws sts get-caller-identity --query Account --output text) \
-  --budget '{
-    "BudgetName":"EnableBillingMetrics",
-    "BudgetLimit":{"Amount":"1","Unit":"USD"},
-    "TimeUnit":"MONTHLY",
-    "BudgetType":"COST"
-  }' \
-  --notifications-with-subscribers '[]'
-```
-
-### 🔍 **S3 Metrics (Handled by Terraform)**
-
-S3 storage metrics are automatically enabled via Terraform:
-```hcl
-resource "aws_s3_bucket_metric" "ysweet_storage_metrics" {
-  bucket = aws_s3_bucket.ysweet_storage.id
-  name   = "EntireBucket"
-}
-```
-
-**No manual action required** - metrics will appear 24-48 hours after bucket has data.
-
-## Quick Access Links
-
-All monitoring dashboards and tools:
-
-```bash
-# Main CloudWatch Dashboard
-terraform output dashboard_url
-
-# CloudWatch Insights (log analysis)  
-terraform output cloudwatch_insights_url
-
-# Billing setup page
-terraform output billing_dashboard_setup
-
-# Application URL
-terraform output application_url
-```
-
-## License
-
-This infrastructure code is provided as-is. Y-Sweet itself is licensed under its own terms.
+This infrastructure code is provided as-is under the MIT license. Y-Sweet itself is licensed under its own terms.
