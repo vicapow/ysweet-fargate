@@ -42,10 +42,9 @@ variable "bucket_name" {
   description = "Human-readable S3 bucket name for Y-Sweet storage"
 }
 
-variable "auth_key" {
+variable "ysweet_auth_key_secret_arn" {
   type        = string
-  description = "Y-Sweet authentication key for production use"
-  sensitive   = true
+  description = "ARN of Secrets Manager secret containing AUTH_KEY"
 }
 
 variable "domain_name" {
@@ -283,6 +282,21 @@ resource "aws_iam_role_policy_attachment" "task_exec_attach" {
   policy_arn = data.aws_iam_policy.ecs_exec_managed.arn
 }
 
+resource "aws_iam_role_policy" "exec_read_secret" {
+  name = "${var.app_name}-exec-read-secret"
+  role = aws_iam_role.task_exec.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect   = "Allow",
+        Action   = ["secretsmanager:GetSecretValue"],
+        Resource = var.ysweet_auth_key_secret_arn
+      }
+    ]
+  })
+}
+
 # Task role for S3 access
 resource "aws_iam_role" "task_role" {
   name = "${var.app_name}-task-role"
@@ -486,13 +500,18 @@ resource "aws_ecs_task_definition" "this" {
       environment = [
         { name = "PORT", value = tostring(var.container_port) },
         { name = "STORAGE_BUCKET", value = aws_s3_bucket.ysweet_storage.bucket },
-        { name = "AUTH_KEY", value = var.auth_key },
         { name = "AWS_ACCESS_KEY_ID", value = aws_iam_access_key.ysweet_s3_access_key.id },
         { name = "AWS_SECRET_ACCESS_KEY", value = aws_iam_access_key.ysweet_s3_access_key.secret },
         { name = "AWS_DEFAULT_REGION", value = var.region },
         { name = "CORS_ALLOW_ORIGIN", value = "*" },
         { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
         { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" }
+      ]
+      secrets = [
+        {
+          name      = "AUTH_KEY",
+          valueFrom = var.ysweet_auth_key_secret_arn
+        }
       ]
       logConfiguration = {
         logDriver = "awslogs",
