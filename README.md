@@ -365,6 +365,27 @@ aws logs get-log-events \
 TASK_ID=$(aws ecs list-tasks --cluster ysweet-cluster --service-name ysweet-svc --region us-east-1 --query 'taskArns[0]' --output text | cut -d'/' -f3) && aws logs get-log-events --log-group-name "/ecs/ysweet" --log-stream-name "ecs/ysweet/$TASK_ID" --region us-east-1
 ```
 
+### S3 Storage Metrics Not Showing in Dashboard
+
+If the "S3 Storage - Bucket Size & Object Count (Daily)" dashboard widget shows no data:
+
+1. **Check if metrics are enabled** (should be handled by Terraform):
+```bash
+aws s3api get-bucket-metrics-configuration --bucket $(terraform output -raw s3_bucket_name) --id EntireBucket
+```
+
+2. **Verify bucket has data**:
+```bash
+aws s3 ls s3://$(terraform output -raw s3_bucket_name) --recursive --human-readable --summarize
+```
+
+3. **Check if CloudWatch metrics exist**:
+```bash
+aws cloudwatch list-metrics --namespace AWS/S3 --metric-name BucketSizeBytes --dimensions Name=BucketName,Value=$(terraform output -raw s3_bucket_name)
+```
+
+**Note**: S3 storage metrics are updated **once daily** and may take 24-48 hours to appear after enabling metrics configuration. The metrics will only show data from the point when metrics were enabled forward.
+
 ## CloudWatch Dashboard
 
 A comprehensive monitoring dashboard is automatically created for your Y-Sweet deployment. After deployment, you can access it at:

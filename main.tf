@@ -83,6 +83,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "ysweet_storage" {
   }
 }
 
+resource "aws_s3_bucket_metric" "ysweet_storage_metrics" {
+  bucket = aws_s3_bucket.ysweet_storage.id
+  name   = "EntireBucket"
+}
+
 # ---------- VPC (use default) ----------
 data "aws_vpc" "default" {
   default = true
