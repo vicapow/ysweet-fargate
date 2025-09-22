@@ -29,14 +29,21 @@ variable "image" {
   type = string # e.g. ACCOUNT.dkr.ecr.REGION.amazonaws.com/hello-fargate:v1
 }
 
+variable "bucket_name" {
+  type        = string
+  description = "Human-readable S3 bucket name for Y-Sweet storage"
+}
+
+variable "auth_key" {
+  type        = string
+  description = "Y-Sweet authentication key for production use"
+  sensitive   = true
+}
+
 
 # ---------- S3 Storage Bucket ----------
 resource "aws_s3_bucket" "ysweet_storage" {
-  bucket = "${var.app_name}-storage-${random_id.bucket_suffix.hex}"
-}
-
-resource "random_id" "bucket_suffix" {
-  byte_length = 4
+  bucket = var.bucket_name
 }
 
 resource "aws_s3_bucket_versioning" "ysweet_storage" {
@@ -211,6 +218,36 @@ resource "aws_iam_role_policy" "s3_access" {
   })
 }
 
+# IAM User for programmatic S3 access
+resource "aws_iam_user" "ysweet_s3_user" {
+  name = "${var.app_name}-s3-user"
+}
+
+resource "aws_iam_access_key" "ysweet_s3_access_key" {
+  user = aws_iam_user.ysweet_s3_user.name
+}
+
+resource "aws_iam_user_policy" "ysweet_s3_user_policy" {
+  name = "${var.app_name}-s3-user-policy"
+  user = aws_iam_user.ysweet_s3_user.name
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Action = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      Resource = [
+        aws_s3_bucket.ysweet_storage.arn,
+        "${aws_s3_bucket.ysweet_storage.arn}/*"
+      ]
+    }]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/${var.app_name}"
   retention_in_days = 7
@@ -230,13 +267,17 @@ resource "aws_ecs_task_definition" "this" {
       name      = var.app_name
       image     = var.image
       essential = true
-      command   = ["sh", "-c", "y-sweet serve --host=0.0.0.0 s3://$STORAGE_BUCKET"]
+      command   = ["sh", "-c", "y-sweet serve --host=0.0.0.0 --auth=$AUTH_KEY s3://$STORAGE_BUCKET"]
       portMappings = [
         { containerPort = var.container_port, protocol = "tcp" }
       ]
       environment = [
         { name = "PORT", value = tostring(var.container_port) },
-        { name = "STORAGE_BUCKET", value = aws_s3_bucket.ysweet_storage.bucket }
+        { name = "STORAGE_BUCKET", value = aws_s3_bucket.ysweet_storage.bucket },
+        { name = "AUTH_KEY", value = var.auth_key },
+        { name = "AWS_ACCESS_KEY_ID", value = aws_iam_access_key.ysweet_s3_access_key.id },
+        { name = "AWS_SECRET_ACCESS_KEY", value = aws_iam_access_key.ysweet_s3_access_key.secret },
+        { name = "AWS_DEFAULT_REGION", value = var.region }
       ]
       logConfiguration = {
         logDriver = "awslogs",
@@ -257,6 +298,12 @@ resource "aws_ecs_service" "this" {
   desired_count   = 1
   launch_type     = "FARGATE"
 
+  # Wait for steady state after deployment
+  wait_for_steady_state = true
+
+  # Health check grace period for container startup
+  health_check_grace_period_seconds = 300
+
   network_configuration {
     subnets          = data.aws_subnets.public.ids
     security_groups  = [aws_security_group.tasks.id]
@@ -268,6 +315,9 @@ resource "aws_ecs_service" "this" {
     container_name   = var.app_name
     container_port   = var.container_port
   }
+
+  # Ensure ALB target group is created first
+  depends_on = [aws_lb_listener.http]
 }
 
 output "alb_dns_name" {
