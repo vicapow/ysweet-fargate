@@ -193,6 +193,29 @@ const ws = new WebSocket('wss://ysweet.yourdomain.com/doc/my-document-id');
 const headers = { 'Authorization': 'Bearer your-auth-key' };
 ```
 
+### **Getting the Connection String**
+
+To get the Y-Sweet connection string for client applications, check the CloudWatch logs:
+
+```bash
+# Get the connection string from logs
+aws logs filter-log-events \
+  --log-group-name "/ecs/ysweet" \
+  --filter-pattern "CONNECTION_STRING" \
+  --region us-east-1 \
+  --query 'events[0].message' \
+  --output text
+
+# Alternative: View recent logs with connection info
+aws logs tail "/ecs/ysweet" --since 1h --follow
+```
+
+**Example connection strings:**
+- Non-SSL: `ys://auth-token@your-alb-dns-name:8080`
+- SSL: `yss://auth-token@ysweet.yourdomain.com/`
+
+The connection string format is: `ys[s]://[auth-token]@[host]/`
+
 ### **Document Storage**
 
 Documents are stored in S3 with this structure:
