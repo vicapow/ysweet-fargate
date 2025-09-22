@@ -128,6 +128,40 @@ aws s3api get-bucket-encryption --bucket $BUCKET_NAME
 aws s3api get-bucket-metrics-configuration --bucket $BUCKET_NAME --id EntireBucket
 ```
 
+**Expected output examples:**
+```json
+// Versioning enabled
+{"Status": "Enabled"}
+
+// Encryption configured
+{"ServerSideEncryptionConfiguration": {"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}}
+
+// Metrics enabled
+{"MetricsConfiguration": {"Id": "EntireBucket"}}
+```
+
+### **4. Verify Existing Bucket (if you already have one)**
+
+If you're using an existing bucket that was previously managed by Terraform, verify it's properly configured:
+
+```bash
+# Replace with your actual bucket name
+BUCKET_NAME="your-existing-bucket-name"
+
+# Check all configurations at once
+echo "=== Versioning Status ==="
+aws s3api get-bucket-versioning --bucket $BUCKET_NAME
+
+echo -e "\n=== Encryption Status ==="
+aws s3api get-bucket-encryption --bucket $BUCKET_NAME
+
+echo -e "\n=== Metrics Configuration ==="
+aws s3api get-bucket-metrics-configuration --bucket $BUCKET_NAME --id EntireBucket
+
+# If all commands return valid configurations, your bucket is ready!
+echo -e "\n✅ Bucket verification complete!"
+```
+
 **Note:** Once created, update the `bucket_name` variable in your `terraform.tfvars` to match your bucket name.
 
 ## ⚙️ Configuration
