@@ -1,6 +1,7 @@
 terraform {
   required_providers {
     aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    random = { source = "hashicorp/random", version = "~> 3.1" }
   }
 }
 
@@ -21,11 +22,38 @@ variable "app_name" {
 
 variable "container_port" {
   type    = number
-  default = 3000
+  default = 8080
 }
 
 variable "image" {
   type = string # e.g. ACCOUNT.dkr.ecr.REGION.amazonaws.com/hello-fargate:v1
+}
+
+
+# ---------- S3 Storage Bucket ----------
+resource "aws_s3_bucket" "ysweet_storage" {
+  bucket = "${var.app_name}-storage-${random_id.bucket_suffix.hex}"
+}
+
+resource "random_id" "bucket_suffix" {
+  byte_length = 4
+}
+
+resource "aws_s3_bucket_versioning" "ysweet_storage" {
+  bucket = aws_s3_bucket.ysweet_storage.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "ysweet_storage" {
+  bucket = aws_s3_bucket.ysweet_storage.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
 }
 
 # ---------- VPC (use default) ----------
@@ -101,10 +129,10 @@ resource "aws_lb_target_group" "this" {
   vpc_id      = data.aws_vpc.default.id
 
   health_check {
-    path                = "/"
+    path                = "/ready"
     healthy_threshold   = 2
-    unhealthy_threshold = 2
-    timeout             = 5
+    unhealthy_threshold = 3
+    timeout             = 10
     interval            = 30
     matcher             = "200"
   }
@@ -149,6 +177,40 @@ resource "aws_iam_role_policy_attachment" "task_exec_attach" {
   policy_arn = data.aws_iam_policy.ecs_exec_managed.arn
 }
 
+# Task role for S3 access
+resource "aws_iam_role" "task_role" {
+  name = "${var.app_name}-task-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect    = "Allow",
+      Principal = { Service = "ecs-tasks.amazonaws.com" },
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "s3_access" {
+  name = "${var.app_name}-s3-access"
+  role = aws_iam_role.task_role.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Action = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      Resource = [
+        aws_s3_bucket.ysweet_storage.arn,
+        "${aws_s3_bucket.ysweet_storage.arn}/*"
+      ]
+    }]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/${var.app_name}"
   retention_in_days = 7
@@ -158,20 +220,23 @@ resource "aws_ecs_task_definition" "this" {
   family                   = var.app_name
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = "256"
-  memory                   = "512"
+  cpu                      = "512"
+  memory                   = "1024"
   execution_role_arn       = aws_iam_role.task_exec.arn
+  task_role_arn           = aws_iam_role.task_role.arn
 
   container_definitions = jsonencode([
     {
       name      = var.app_name
       image     = var.image
       essential = true
+      command   = ["sh", "-c", "y-sweet serve --host=0.0.0.0 s3://$STORAGE_BUCKET"]
       portMappings = [
         { containerPort = var.container_port, protocol = "tcp" }
       ]
       environment = [
-        { name = "PORT", value = tostring(var.container_port) }
+        { name = "PORT", value = tostring(var.container_port) },
+        { name = "STORAGE_BUCKET", value = aws_s3_bucket.ysweet_storage.bucket }
       ]
       logConfiguration = {
         logDriver = "awslogs",
@@ -207,4 +272,8 @@ resource "aws_ecs_service" "this" {
 
 output "alb_dns_name" {
   value = aws_lb.this.dns_name
+}
+
+output "s3_bucket_name" {
+  value = aws_s3_bucket.ysweet_storage.bucket
 }
