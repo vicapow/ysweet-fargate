@@ -4,6 +4,57 @@ resource "aws_cloudwatch_log_group" "app" {
   retention_in_days = 7
 }
 
+# ---------- S3 Performance Monitoring ----------
+resource "aws_cloudwatch_dashboard" "s3_performance" {
+  dashboard_name = "${var.app_name}-s3-performance"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AWS/S3", "4xxErrors", "BucketName", var.bucket_name],
+            [".", "5xxErrors", ".", "."],
+            [".", "AllRequests", ".", "."],
+            [".", "GetRequests", ".", "."],
+            [".", "PutRequests", ".", "."]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.region
+          title   = "S3 Request Metrics"
+          period  = 300
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AWS/S3", "FirstByteLatency", "BucketName", var.bucket_name],
+            [".", "TotalRequestLatency", ".", "."]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.region
+          title   = "S3 Latency Metrics"
+          period  = 300
+        }
+      }
+    ]
+  })
+}
+
 # Separate log group for dev server
 resource "aws_cloudwatch_log_group" "app_dev" {
   name              = "/ecs/${var.app_name}-dev"
@@ -112,7 +163,7 @@ resource "aws_cloudwatch_log_metric_filter" "dev_total_logs" {
 resource "aws_cloudwatch_log_metric_filter" "s3_slowdown_retries" {
   name           = "${var.app_name}-s3-slowdown-retries"
   log_group_name = aws_cloudwatch_log_group.app.name
-  pattern        = "SlowDown error - retrying"
+  pattern        = "SlowDown"
 
   metric_transformation {
     name      = "S3SlowDownRetries"
@@ -124,7 +175,7 @@ resource "aws_cloudwatch_log_metric_filter" "s3_slowdown_retries" {
 resource "aws_cloudwatch_log_metric_filter" "dev_s3_slowdown_retries" {
   name           = "${var.app_name}-dev-s3-slowdown-retries"
   log_group_name = aws_cloudwatch_log_group.app_dev.name
-  pattern        = "SlowDown error - retrying"
+  pattern        = "SlowDown"
 
   metric_transformation {
     name      = "DevS3SlowDownRetries"

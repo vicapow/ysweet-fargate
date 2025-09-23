@@ -10,6 +10,36 @@ data "aws_subnets" "public" {
   }
 }
 
+# ---------- S3 VPC Endpoint for Performance ----------
+# This eliminates 503 errors by keeping S3 traffic within AWS network
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id              = data.aws_vpc.default.id
+  service_name        = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type   = "Gateway"
+  route_table_ids     = data.aws_route_tables.default.ids
+  
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = "*"
+        Action = "s3:*"
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.app_name}-s3-endpoint"
+  }
+}
+
+# Get route tables for VPC endpoint
+data "aws_route_tables" "default" {
+  vpc_id = data.aws_vpc.default.id
+}
+
 # ---------- Security Groups ----------
 resource "aws_security_group" "alb" {
   name        = "${var.app_name}-alb-sg"

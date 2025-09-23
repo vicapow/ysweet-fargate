@@ -49,7 +49,7 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
           stat    = "Sum"
         }
       },
-      # ECS Task Counts
+      # Target Group Health
       {
         type   = "metric"
         x      = 0
@@ -59,16 +59,16 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
 
         properties = {
           metrics = [
-            ["AWS/ECS", "RunningTaskCount", "ServiceName", aws_ecs_service.this.name, "ClusterName", aws_ecs_cluster.this.name],
-            [".", "PendingTaskCount", ".", ".", ".", "."],
-            [".", "DesiredCount", ".", ".", ".", "."]
+            ["AWS/ApplicationELB", "HealthyHostCount", "TargetGroup", aws_lb_target_group.this.arn_suffix],
+            [".", "UnHealthyHostCount", ".", "."],
+            [".", "RequestCount", "LoadBalancer", aws_lb.this.arn_suffix]
           ]
           view    = "timeSeries"
           stacked = false
           region  = var.region
-          title   = "ECS Service - Task Counts"
-          period  = 300
-          stat    = "Average"
+          title   = "Target Group - Health Status & Requests"
+          period  = 60
+          stat    = "Maximum"
         }
       },
       # ALB Connection Metrics
@@ -108,9 +108,9 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
             [".", "ErrorLogCount"]
           ]
           view    = "timeSeries"
-          stacked = true
+          stacked = false
           region  = var.region
-          title   = "Production - Log Volume by Level (Stacked per 5min)"
+          title   = "Production - Log Volume by Level (per 5min)"
           period  = 300
           stat    = "Sum"
           yAxis = {
@@ -135,9 +135,9 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
             [".", "DevErrorLogCount"]
           ]
           view    = "timeSeries"
-          stacked = true
+          stacked = false
           region  = var.region
-          title   = "Dev Server - Log Volume by Level (Stacked per 5min)"
+          title   = "Dev Server - Log Volume by Level (per 5min)"
           period  = 300
           stat    = "Sum"
           yAxis = {
@@ -156,7 +156,13 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
         height = 4
 
         properties = {
-          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 25"
+          query = <<EOT
+SOURCE '${aws_cloudwatch_log_group.app.name}'
+| fields @timestamp, @message
+| filter @message like /ERROR/
+| sort @timestamp desc
+| limit 25
+EOT
           region  = var.region
           title   = "Recent Errors (Production)"
           view    = "table"
@@ -171,7 +177,13 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
         height = 4
 
         properties = {
-          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /WARN/\n| sort @timestamp desc\n| limit 25"
+          query = <<EOT
+SOURCE '${aws_cloudwatch_log_group.app.name}'
+| fields @timestamp, @message
+| filter @message like /WARN/
+| sort @timestamp desc
+| limit 25
+EOT
           region  = var.region
           title   = "Recent Warnings (Production)"
           view    = "table"
@@ -186,7 +198,13 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
         height = 4
 
         properties = {
-          query   = "SOURCE '${aws_cloudwatch_log_group.app_dev.name}'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 25"
+          query = <<EOT
+SOURCE '${aws_cloudwatch_log_group.app_dev.name}'
+| fields @timestamp, @message
+| filter @message like /ERROR/
+| sort @timestamp desc
+| limit 25
+EOT
           region  = var.region
           title   = "Recent Errors (Dev Server)"
           view    = "table"
@@ -201,7 +219,13 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
         height = 4
 
         properties = {
-          query   = "SOURCE '${aws_cloudwatch_log_group.app_dev.name}'\n| fields @timestamp, @message\n| filter @message like /WARN/\n| sort @timestamp desc\n| limit 25"
+          query = <<EOT
+SOURCE '${aws_cloudwatch_log_group.app_dev.name}'
+| fields @timestamp, @message
+| filter @message like /WARN/
+| sort @timestamp desc
+| limit 25
+EOT
           region  = var.region
           title   = "Recent Warnings (Dev Server)"
           view    = "table"
@@ -231,21 +255,6 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
               min = 0
             }
           }
-        }
-      },
-      # S3 SlowDown Retry Details
-      {
-        type   = "log"
-        x      = 0
-        y      = 48
-        width  = 24
-        height = 6
-
-        properties = {
-          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}', '${aws_cloudwatch_log_group.app_dev.name}'\n| fields @timestamp, @message, @logStream\n| filter @message like /SlowDown error - retrying/\n| parse @message \"method=* attempt=* delay_ms=*\" as method, attempt, delay_ms\n| stats count() as retry_count, avg(delay_ms) as avg_delay_ms, max(attempt) as max_attempts by method, @logStream, bin(5m)\n| sort @timestamp desc\n| limit 100"
-          region  = var.region
-          title   = "S3 SlowDown Retry Analysis (Production & Dev)"
-          view    = "table"
         }
       },
     ]

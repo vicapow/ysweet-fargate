@@ -25,6 +25,27 @@ resource "aws_iam_role_policy_attachment" "task_exec_attach" {
   policy_arn = data.aws_iam_policy.ecs_exec_managed.arn
 }
 
+# Add SSM permissions for ECS Exec
+resource "aws_iam_role_policy" "ecs_exec_policy" {
+  name = "${var.app_name}-ecs-exec-policy"
+  role = aws_iam_role.task_role.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "exec_read_secret" {
   name = "${var.app_name}-exec-read-secret"
   role = aws_iam_role.task_exec.id
@@ -64,7 +85,11 @@ resource "aws_iam_role_policy" "s3_access" {
         "s3:GetObject",
         "s3:PutObject",
         "s3:DeleteObject",
-        "s3:ListBucket"
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:ListBucketMultipartUploads",
+        "s3:ListMultipartUploadParts",
+        "s3:AbortMultipartUpload"
       ],
       Resource = concat([
         "arn:aws:s3:::${var.bucket_name}",
@@ -77,7 +102,7 @@ resource "aws_iam_role_policy" "s3_access" {
   })
 }
 
-# IAM User for programmatic S3 access
+# IAM User for Y-Sweet S3 access (required by rusty-s3 library)
 resource "aws_iam_user" "ysweet_s3_user" {
   name = "${var.app_name}-s3-user"
 }
@@ -97,7 +122,8 @@ resource "aws_iam_user_policy" "ysweet_s3_user_policy" {
         "s3:GetObject",
         "s3:PutObject",
         "s3:DeleteObject",
-        "s3:ListBucket"
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
       ],
       Resource = concat([
         "arn:aws:s3:::${var.bucket_name}",
@@ -134,11 +160,11 @@ resource "aws_ecs_task_definition" "this" {
         { name = "STORAGE_BUCKET", value = var.bucket_name },
         { name = "AWS_ACCESS_KEY_ID", value = aws_iam_access_key.ysweet_s3_access_key.id },
         { name = "AWS_SECRET_ACCESS_KEY", value = aws_iam_access_key.ysweet_s3_access_key.secret },
-        { name = "AWS_DEFAULT_REGION", value = var.region },
+        { name = "AWS_REGION", value = var.region },
+        # { name = "AWS_ENDPOINT_URL_S3", value = "https://s3.${var.region}.amazonaws.com" },
         { name = "CORS_ALLOW_ORIGIN", value = "*" },
         { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
         { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" },
-        { name = "AWS_ENDPOINT_URL_S3", value = "https://s3.${var.region}.amazonaws.com" },
         { name = "RUST_LOG", value = var.log_level }
       ]
       secrets = [
@@ -188,6 +214,9 @@ resource "aws_ecs_service" "this" {
   # (Doesn't affect "never >1", just reduces false negatives during cold start.)
   health_check_grace_period_seconds = 300
 
+  # Enable ECS Exec for debugging
+  enable_execute_command = true
+
   network_configuration {
     subnets          = data.aws_subnets.public.ids
     security_groups  = [aws_security_group.tasks.id]
@@ -230,11 +259,11 @@ resource "aws_ecs_task_definition" "dev" {
         { name = "STORAGE_BUCKET", value = var.dev_bucket_name != "" ? var.dev_bucket_name : var.bucket_name },
         { name = "AWS_ACCESS_KEY_ID", value = aws_iam_access_key.ysweet_s3_access_key.id },
         { name = "AWS_SECRET_ACCESS_KEY", value = aws_iam_access_key.ysweet_s3_access_key.secret },
-        { name = "AWS_DEFAULT_REGION", value = var.region },
+        { name = "AWS_REGION", value = var.region },
+        # { name = "AWS_ENDPOINT_URL_S3", value = "https://s3.${var.region}.amazonaws.com" },
         { name = "CORS_ALLOW_ORIGIN", value = "*" },
         { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
         { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" },
-        { name = "AWS_ENDPOINT_URL_S3", value = "https://s3.${var.region}.amazonaws.com" },
         { name = "RUST_LOG", value = "debug" }  # More verbose logging for dev
       ]
       secrets = [
@@ -273,11 +302,14 @@ resource "aws_ecs_service" "dev" {
   deployment_maximum_percent         = 200  # Can have 2 tasks during deployment
   deployment_minimum_healthy_percent = 50   # Keep at least half healthy
 
-  # Don't wait for steady state in dev
-  wait_for_steady_state = false
+  # Wait for steady state in dev (same as production)
+  wait_for_steady_state = true
 
   # Shorter grace period for dev
   health_check_grace_period_seconds = 60
+
+  # Enable ECS Exec for debugging
+  enable_execute_command = true
 
   network_configuration {
     subnets          = data.aws_subnets.public.ids
