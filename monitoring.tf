@@ -4,11 +4,17 @@ resource "aws_cloudwatch_log_group" "app" {
   retention_in_days = 7
 }
 
+# Separate log group for dev server
+resource "aws_cloudwatch_log_group" "app_dev" {
+  name              = "/ecs/${var.app_name}-dev"
+  retention_in_days = 7
+}
+
 # ---------- CloudWatch Metric Filters ----------
 resource "aws_cloudwatch_log_metric_filter" "info_logs" {
   name           = "${var.app_name}-info-logs"
   log_group_name = aws_cloudwatch_log_group.app.name
-  pattern        = "[timestamp, request_id, level=\"INFO\", ...]"
+  pattern        = "INFO"
 
   metric_transformation {
     name      = "InfoLogCount"
@@ -20,7 +26,7 @@ resource "aws_cloudwatch_log_metric_filter" "info_logs" {
 resource "aws_cloudwatch_log_metric_filter" "error_logs" {
   name           = "${var.app_name}-error-logs"
   log_group_name = aws_cloudwatch_log_group.app.name
-  pattern        = "[timestamp, request_id, level=\"ERROR\", ...]"
+  pattern        = "ERROR"
 
   metric_transformation {
     name      = "ErrorLogCount"
@@ -32,7 +38,7 @@ resource "aws_cloudwatch_log_metric_filter" "error_logs" {
 resource "aws_cloudwatch_log_metric_filter" "warn_logs" {
   name           = "${var.app_name}-warn-logs"
   log_group_name = aws_cloudwatch_log_group.app.name
-  pattern        = "[timestamp, request_id, level=\"WARN\", ...]"
+  pattern        = "WARN"
 
   metric_transformation {
     name      = "WarnLogCount"
@@ -44,7 +50,7 @@ resource "aws_cloudwatch_log_metric_filter" "warn_logs" {
 resource "aws_cloudwatch_log_metric_filter" "total_logs" {
   name           = "${var.app_name}-total-logs"
   log_group_name = aws_cloudwatch_log_group.app.name
-  pattern        = "[timestamp, request_id, level, ...]"
+  pattern        = ""
 
   metric_transformation {
     name      = "TotalLogCount"
@@ -53,112 +59,116 @@ resource "aws_cloudwatch_log_metric_filter" "total_logs" {
   }
 }
 
-# ---------- CloudWatch Insights Saved Queries ----------
-resource "aws_cloudwatch_query_definition" "websocket_connections" {
-  name = "${var.app_name}-websocket-connections"
-  
-  log_group_names = [
-    aws_cloudwatch_log_group.app.name
-  ]
-  
-  query_string = <<EOF
-fields @timestamp, @message
-| filter @message like /WebSocket/
-| stats count() as connections by bin(5m)
-| sort @timestamp desc
-EOF
+# ---------- Dev Server Metric Filters ----------
+resource "aws_cloudwatch_log_metric_filter" "dev_info_logs" {
+  name           = "${var.app_name}-dev-info-logs"
+  log_group_name = aws_cloudwatch_log_group.app_dev.name
+  pattern        = "INFO"
+
+  metric_transformation {
+    name      = "DevInfoLogCount"
+    namespace = "YSweet/Logs"
+    value     = "1"
+  }
 }
 
-resource "aws_cloudwatch_query_definition" "document_operations" {
-  name = "${var.app_name}-document-operations"
-  
-  log_group_names = [
-    aws_cloudwatch_log_group.app.name
-  ]
-  
-  query_string = <<EOF
-fields @timestamp, @message
-| filter @message like /Persisting snapshot/ or @message like /Loading document/
-| parse @message "size=* " as doc_size
-| stats count() as operations, avg(doc_size) as avg_size by bin(5m)
-| sort @timestamp desc
-EOF
+resource "aws_cloudwatch_log_metric_filter" "dev_error_logs" {
+  name           = "${var.app_name}-dev-error-logs"
+  log_group_name = aws_cloudwatch_log_group.app_dev.name
+  pattern        = "ERROR"
+
+  metric_transformation {
+    name      = "DevErrorLogCount"
+    namespace = "YSweet/Logs"
+    value     = "1"
+  }
 }
+
+resource "aws_cloudwatch_log_metric_filter" "dev_warn_logs" {
+  name           = "${var.app_name}-dev-warn-logs"
+  log_group_name = aws_cloudwatch_log_group.app_dev.name
+  pattern        = "WARN"
+
+  metric_transformation {
+    name      = "DevWarnLogCount"
+    namespace = "YSweet/Logs"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "dev_total_logs" {
+  name           = "${var.app_name}-dev-total-logs"
+  log_group_name = aws_cloudwatch_log_group.app_dev.name
+  pattern        = ""
+
+  metric_transformation {
+    name      = "DevTotalLogCount"
+    namespace = "YSweet/Logs"
+    value     = "1"
+  }
+}
+
+# ---------- S3 SlowDown Metric Filters ----------
+resource "aws_cloudwatch_log_metric_filter" "s3_slowdown_retries" {
+  name           = "${var.app_name}-s3-slowdown-retries"
+  log_group_name = aws_cloudwatch_log_group.app.name
+  pattern        = "SlowDown error - retrying"
+
+  metric_transformation {
+    name      = "S3SlowDownRetries"
+    namespace = "YSweet/S3"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "dev_s3_slowdown_retries" {
+  name           = "${var.app_name}-dev-s3-slowdown-retries"
+  log_group_name = aws_cloudwatch_log_group.app_dev.name
+  pattern        = "SlowDown error - retrying"
+
+  metric_transformation {
+    name      = "DevS3SlowDownRetries"
+    namespace = "YSweet/S3"
+    value     = "1"
+  }
+}
+
+# ---------- CloudWatch Insights Saved Queries ----------
+
 
 resource "aws_cloudwatch_query_definition" "error_analysis" {
   name = "${var.app_name}-error-analysis"
   
   log_group_names = [
-    aws_cloudwatch_log_group.app.name
+    aws_cloudwatch_log_group.app.name,
+    aws_cloudwatch_log_group.app_dev.name
   ]
   
   query_string = <<EOF
 fields @timestamp, @message
-| filter @message like /ERROR/ or @message like /WARN/ or @message like /Failed/
+| filter @message like /ERROR/ or @message like /WARN/
 | stats count() as error_count by @message
 | sort error_count desc
 | limit 20
 EOF
 }
 
-resource "aws_cloudwatch_query_definition" "performance_monitoring" {
-  name = "${var.app_name}-performance-monitoring"
+resource "aws_cloudwatch_query_definition" "s3_slowdown_analysis" {
+  name = "${var.app_name}-s3-slowdown-analysis"
   
   log_group_names = [
-    aws_cloudwatch_log_group.app.name
+    aws_cloudwatch_log_group.app.name,
+    aws_cloudwatch_log_group.app_dev.name
   ]
   
   query_string = <<EOF
 fields @timestamp, @message
-| filter @message like /ms/ or @message like /seconds/
-| parse @message /(?<duration>\d+)(ms|seconds)/
-| stats avg(duration) as avg_duration, max(duration) as max_duration by bin(5m)
+| filter @message like /SlowDown error - retrying/
+| parse @message "method=* attempt=* delay_ms=*" as method, attempt, delay_ms
+| stats count() as retry_count, avg(delay_ms) as avg_delay_ms, max(attempt) as max_attempts by method, bin(5m)
 | sort @timestamp desc
 EOF
 }
 
-resource "aws_cloudwatch_query_definition" "s3_api_errors" {
-  name = "${var.app_name}-s3-api-errors"
-  
-  log_group_names = [
-    aws_cloudwatch_log_group.s3_api_logs.name
-  ]
-  
-  query_string = <<EOF
-fields @timestamp, eventName, errorCode, errorMessage, responseElements.error.code, responseElements.error.message
-| filter errorCode exists or responseElements.error.code exists
-| filter eventName like /Put/ or eventName like /Get/ or eventName like /Delete/
-| stats count() as error_count by errorCode, responseElements.error.code, eventName
-| sort error_count desc
-EOF
-}
 
-resource "aws_cloudwatch_query_definition" "s3_503_errors" {
-  name = "${var.app_name}-s3-503-errors"
-  
-  log_group_names = [
-    aws_cloudwatch_log_group.s3_api_logs.name
-  ]
-  
-  query_string = <<EOF
-fields @timestamp, eventName, sourceIPAddress, userAgent, responseElements.error.code, responseElements.error.message
-| filter responseElements.error.code = "503" or errorCode = "ServiceUnavailable"
-| sort @timestamp desc
-| limit 50
-EOF
-}
 
-resource "aws_cloudwatch_query_definition" "s3_put_operations" {
-  name = "${var.app_name}-s3-put-operations"
-  
-  log_group_names = [
-    aws_cloudwatch_log_group.s3_api_logs.name
-  ]
-  
-  query_string = <<EOF
-fields @timestamp, eventName, sourceIPAddress, requestParameters.key
-| filter eventName = "PutObject"
-| stats count() as put_count by bin(1m)
-| sort @timestamp desc
-EOF
-}

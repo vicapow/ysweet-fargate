@@ -93,124 +93,51 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
           stat    = "Sum"
         }
       },
-      # Target Group Health
-      {
-        type   = "metric"
-        x      = 0
-        y      = 12
-        width  = 12
-        height = 6
-
-        properties = {
-          metrics = [
-            ["AWS/ApplicationELB", "HealthyHostCount", "TargetGroup", aws_lb_target_group.this.arn_suffix],
-            [".", "UnHealthyHostCount", ".", "."],
-            [".", "RequestCount", "LoadBalancer", aws_lb.this.arn_suffix]
-          ]
-          view    = "timeSeries"
-          stacked = false
-          region  = var.region
-          title   = "Target Group - Health Status & Requests"
-          period  = 60
-          stat    = "Maximum"
-        }
-      },
-      # S3 Storage Metrics
-      {
-        type   = "metric"
-        x      = 12
-        y      = 12
-        width  = 12
-        height = 6
-
-        properties = {
-          metrics = [
-            ["AWS/S3", "BucketSizeBytes", "BucketName", var.bucket_name, "StorageType", "StandardStorage"],
-            [".", "NumberOfObjects", ".", ".", ".", "AllStorageTypes"]
-          ]
-          view    = "timeSeries"
-          stacked = false
-          region  = var.region
-          title   = "S3 Storage - Bucket Size & Object Count (Daily)"
-          period  = 86400
-          stat    = "Maximum"
-          yAxis = {
-            left = {
-              min = 0
-            }
-          }
-        }
-      },
-      # Document Save Activity
-      {
-        type   = "log"
-        x      = 0
-        y      = 18
-        width  = 12
-        height = 4
-
-        properties = {
-          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /Persisting snapshot size/\n| parse @message \"size=* \" as doc_size\n| stats count() as saves, avg(doc_size) as avg_size by bin(5m)\n| sort @timestamp desc\n| limit 100"
-          region  = var.region
-          title   = "Y-Sweet Document Saves (Real-time S3 Activity)"
-          view    = "table"
-        }
-      },
-      # WebSocket Connection Activity
-      {
-        type   = "log"
-        x      = 12
-        y      = 18
-        width  = 12
-        height = 4
-
-        properties = {
-          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /WebSocket/\n| stats count() as connections by bin(5m)\n| sort @timestamp desc\n| limit 100"
-          region  = var.region
-          title   = "WebSocket Connection Activity"
-          view    = "table"
-        }
-      },
-      # Log Volume by Level
+      # Log Volume by Level (Production)
       {
         type   = "metric"
         x      = 0
         y      = 22
-        width  = 12
+        width  = 24
         height = 6
 
         properties = {
           metrics = [
-            ["YSweet/Logs", "TotalLogCount"],
-            [".", "InfoLogCount"],
+            ["YSweet/Logs", "InfoLogCount"],
             [".", "WarnLogCount"],
             [".", "ErrorLogCount"]
           ]
           view    = "timeSeries"
-          stacked = false
+          stacked = true
           region  = var.region
-          title   = "Log Volume by Level (Count per 5min)"
+          title   = "Production - Log Volume by Level (Stacked per 5min)"
           period  = 300
           stat    = "Sum"
+          yAxis = {
+            left = {
+              min = 0
+            }
+          }
         }
       },
-      # Error & Warning Rate
+      # Dev Server Log Volume by Level
       {
         type   = "metric"
-        x      = 12
-        y      = 22
-        width  = 12
+        x      = 0
+        y      = 28
+        width  = 24
         height = 6
 
         properties = {
           metrics = [
-            ["YSweet/Logs", "ErrorLogCount", { "stat": "Sum" }],
-            [".", "WarnLogCount", { "stat": "Sum" }]
+            ["YSweet/Logs", "DevInfoLogCount"],
+            [".", "DevWarnLogCount"],
+            [".", "DevErrorLogCount"]
           ]
           view    = "timeSeries"
           stacked = true
           region  = var.region
-          title   = "Error & Warning Rate (per 5min)"
+          title   = "Dev Server - Log Volume by Level (Stacked per 5min)"
           period  = 300
           stat    = "Sum"
           yAxis = {
@@ -220,69 +147,85 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
           }
         }
       },
-      # Recent Error Logs
-      {
-        type   = "log"
-        x      = 0
-        y      = 28
-        width  = 12
-        height = 6
-
-        properties = {
-          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 100"
-          region  = var.region
-          title   = "Recent Error Logs"
-          view    = "table"
-        }
-      },
-      # Log Activity Over Time
-      {
-        type   = "log"
-        x      = 12
-        y      = 28
-        width  = 12
-        height = 6
-
-        properties = {
-          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| stats count() as log_count by bin(5m)\n| sort @timestamp desc"
-          region  = var.region
-          title   = "Log Activity Over Time"
-          view    = "table"
-        }
-      },
-      # Recent Errors and Warnings
+      # Recent Errors (Production)
       {
         type   = "log"
         x      = 0
         y      = 34
-        width  = 24
+        width  = 12
         height = 4
 
         properties = {
-          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /ERROR/ or @message like /WARN/ or @message like /Failed/\n| sort @timestamp desc\n| limit 50"
+          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 25"
           region  = var.region
-          title   = "Recent Errors and Warnings"
+          title   = "Recent Errors (Production)"
           view    = "table"
         }
       },
-      # AWS Account - Estimated Monthly Charges
+      # Recent Warnings (Production)
       {
-        type   = "metric"
+        type   = "log"
+        x      = 12
+        y      = 34
+        width  = 12
+        height = 4
+
+        properties = {
+          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}'\n| fields @timestamp, @message\n| filter @message like /WARN/\n| sort @timestamp desc\n| limit 25"
+          region  = var.region
+          title   = "Recent Warnings (Production)"
+          view    = "table"
+        }
+      },
+      # Recent Errors (Dev Server)
+      {
+        type   = "log"
         x      = 0
         y      = 38
         width  = 12
+        height = 4
+
+        properties = {
+          query   = "SOURCE '${aws_cloudwatch_log_group.app_dev.name}'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 25"
+          region  = var.region
+          title   = "Recent Errors (Dev Server)"
+          view    = "table"
+        }
+      },
+      # Recent Warnings (Dev Server)
+      {
+        type   = "log"
+        x      = 12
+        y      = 38
+        width  = 12
+        height = 4
+
+        properties = {
+          query   = "SOURCE '${aws_cloudwatch_log_group.app_dev.name}'\n| fields @timestamp, @message\n| filter @message like /WARN/\n| sort @timestamp desc\n| limit 25"
+          region  = var.region
+          title   = "Recent Warnings (Dev Server)"
+          view    = "table"
+        }
+      },
+      # S3 SlowDown Retry Metrics
+      {
+        type   = "metric"
+        x      = 0
+        y      = 42
+        width  = 24
         height = 6
 
         properties = {
           metrics = [
-            ["AWS/Billing", "EstimatedCharges", "Currency", "USD"]
+            ["YSweet/S3", "S3SlowDownRetries"],
+            [".", "DevS3SlowDownRetries"]
           ]
           view    = "timeSeries"
           stacked = false
-          region  = "us-east-1"
-          title   = "AWS Account - Estimated Monthly Charges"
-          period  = 86400
-          stat    = "Maximum"
+          region  = var.region
+          title   = "S3 SlowDown Retries (Production vs Dev)"
+          period  = 300
+          stat    = "Sum"
           yAxis = {
             left = {
               min = 0
@@ -290,34 +233,21 @@ resource "aws_cloudwatch_dashboard" "ysweet_dashboard" {
           }
         }
       },
-      # Service-Level Estimated Charges
+      # S3 SlowDown Retry Details
       {
-        type   = "metric"
-        x      = 12
-        y      = 38
-        width  = 12
+        type   = "log"
+        x      = 0
+        y      = 48
+        width  = 24
         height = 6
 
         properties = {
-          metrics = [
-            ["AWS/Billing", "EstimatedCharges", "Currency", "USD", "ServiceName", "AmazonECS"],
-            [".", ".", ".", ".", ".", "AmazonS3"],
-            [".", ".", ".", ".", ".", "AmazonEC2"],
-            [".", ".", ".", ".", ".", "AmazonCloudWatch"]
-          ]
-          view    = "timeSeries"
-          stacked = false
-          region  = "us-east-1"
-          title   = "Service-Level Estimated Charges"
-          period  = 86400
-          stat    = "Maximum"
-          yAxis = {
-            left = {
-              min = 0
-            }
-          }
+          query   = "SOURCE '${aws_cloudwatch_log_group.app.name}', '${aws_cloudwatch_log_group.app_dev.name}'\n| fields @timestamp, @message, @logStream\n| filter @message like /SlowDown error - retrying/\n| parse @message \"method=* attempt=* delay_ms=*\" as method, attempt, delay_ms\n| stats count() as retry_count, avg(delay_ms) as avg_delay_ms, max(attempt) as max_attempts by method, @logStream, bin(5m)\n| sort @timestamp desc\n| limit 100"
+          region  = var.region
+          title   = "S3 SlowDown Retry Analysis (Production & Dev)"
+          view    = "table"
         }
-      }
+      },
     ]
   })
 }

@@ -228,51 +228,12 @@ terraform output cloudwatch_insights_url
 ```
 
 **Available Queries:**
-- `ysweet-websocket-connections` - WebSocket activity patterns
-- `ysweet-document-operations` - Document save/load tracking  
-- `ysweet-error-analysis` - Error pattern analysis
-- `ysweet-performance-monitoring` - Timing and performance metrics
-- `ysweet-s3-api-errors` - S3 API errors by type and operation
-- `ysweet-s3-503-errors` - Specific 503 Service Unavailable errors from S3
-- `ysweet-s3-put-operations` - S3 PUT operation frequency analysis
+- `ysweet-error-analysis` - Error and warning pattern analysis
+- `ysweet-s3-slowdown-analysis` - S3 SlowDown retry analysis with method/attempt/delay breakdown
 
 ### **S3 API Monitoring**
-Comprehensive S3 API call tracking via CloudTrail for debugging storage issues:
+S3 storage monitoring is handled through the standard ECS application logs and CloudWatch metrics.
 
-```bash
-# Access S3 API logs
-terraform output s3_api_logs_group
-```
-
-**S3 Monitoring Features:**
-- **CloudTrail logging** of all S3 API calls to your document bucket
-- **Real-time S3 error tracking** including 503 Service Unavailable errors
-- **Request frequency analysis** to identify rate limiting issues
-- **Source IP and user agent** tracking for API calls
-
-**View S3 API Logs:**
-```bash
-# Check recent S3 API events
-aws logs filter-log-events \
-  --log-group-name "/aws/cloudtrail/ysweet-s3-api" \
-  --region us-east-1 \
-  --start-time $(date -d '1 hour ago' +%s)000
-
-# Search for 503 errors specifically
-aws logs filter-log-events \
-  --log-group-name "/aws/cloudtrail/ysweet-s3-api" \
-  --filter-pattern "503" \
-  --region us-east-1
-```
-
-**Note:** CloudTrail logs appear 5-15 minutes after API calls are made.
-
-### **Cost Monitoring Setup**
-Enable real-time cost tracking (one-time setup):
-
-1. Visit: `terraform output billing_dashboard_setup`
-2. Enable "Receive Billing Alerts"
-3. Cost widgets will populate within 24 hours
 
 ## 🔒 SSL/HTTPS Setup
 
@@ -492,7 +453,6 @@ terraform output dashboard_url            # CloudWatch monitoring dashboard
 terraform output cloudwatch_insights_url  # Advanced log analysis
 
 # Setup & configuration  
-terraform output billing_dashboard_setup  # Enable cost monitoring
 terraform output s3_bucket_name          # Your document storage bucket
 ```
 
