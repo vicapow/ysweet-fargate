@@ -2,26 +2,27 @@
 # S3 bucket is managed manually - see README for setup instructions
 
 # ---------- CloudTrail for S3 API Logging ----------
-resource "aws_cloudtrail" "s3_api_logging" {
-  name           = "${var.app_name}-s3-api-trail"
-  s3_bucket_name = aws_s3_bucket.cloudtrail_logs.bucket
+# TEMPORARILY DISABLED TO TEST 503 SLOWDOWN ISSUE
+# resource "aws_cloudtrail" "s3_api_logging" {
+#   name           = "${var.app_name}-s3-api-trail"
+#   s3_bucket_name = aws_s3_bucket.cloudtrail_logs.bucket
 
-  event_selector {
-    read_write_type                 = "All"
-    include_management_events       = false
-    exclude_management_event_sources = []
+#   event_selector {
+#     read_write_type                 = "All"
+#     include_management_events       = false
+#     exclude_management_event_sources = []
 
-    data_resource {
-      type   = "AWS::S3::Object"
-      values = ["arn:aws:s3:::${var.bucket_name}/*"]
-    }
-  }
+#     data_resource {
+#       type   = "AWS::S3::Object"
+#       values = ["arn:aws:s3:::${var.bucket_name}/*"]
+#     }
+#   }
 
-  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.s3_api_logs.arn}:*"
-  cloud_watch_logs_role_arn  = aws_iam_role.cloudtrail_logs_role.arn
+#   cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.s3_api_logs.arn}:*"
+#   cloud_watch_logs_role_arn  = aws_iam_role.cloudtrail_logs_role.arn
 
-  depends_on = [aws_s3_bucket_policy.cloudtrail_logs_policy]
-}
+#   depends_on = [aws_s3_bucket_policy.cloudtrail_logs_policy]
+# }
 
 # CloudWatch Log Group for S3 API calls
 resource "aws_cloudwatch_log_group" "s3_api_logs" {

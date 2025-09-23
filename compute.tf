@@ -138,7 +138,7 @@ resource "aws_ecs_task_definition" "this" {
         { name = "CORS_ALLOW_ORIGIN", value = "*" },
         { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
         { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" },
-        { name = "S3_ENDPOINT", value = "https://s3.${var.region}.amazonaws.com" },
+        { name = "AWS_ENDPOINT_URL_S3", value = "https://s3.${var.region}.amazonaws.com" },
         { name = "RUST_LOG", value = var.log_level }
       ]
       secrets = [
@@ -234,7 +234,7 @@ resource "aws_ecs_task_definition" "dev" {
         { name = "CORS_ALLOW_ORIGIN", value = "*" },
         { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
         { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" },
-        { name = "S3_ENDPOINT", value = "https://s3.${var.region}.amazonaws.com" },
+        { name = "AWS_ENDPOINT_URL_S3", value = "https://s3.${var.region}.amazonaws.com" },
         { name = "RUST_LOG", value = "debug" }  # More verbose logging for dev
       ]
       secrets = [

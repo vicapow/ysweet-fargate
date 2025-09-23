@@ -549,97 +549,22 @@ If you want to build and deploy a custom Y-Sweet image from the included submodu
 
 - Docker installed and running
 - AWS CLI configured with appropriate permissions
-- Access to the ECR repository specified in `terraform.tfvars`
+- Y-Sweet submodule initialized (`git submodule update --init --recursive`)
 
-### Step 1: Build the Docker Image
+### Quick Build and Deploy
 
-From the project root directory:
-
-```bash
-cd y-sweet/crates
-docker build -t y-sweet:local .
-```
-
-This builds the Y-Sweet server from the Rust source code in the submodule using a multi-stage Docker build.
-
-### Step 2: Tag for ECR
-
-Tag the image for your ECR repository (replace with your account ID and region):
+Use the included automated script:
 
 ```bash
-docker tag y-sweet:local 732560673613.dkr.ecr.us-east-1.amazonaws.com/y-sweet:v6
-```
-
-**Note:** Increment the version number (v6, v7, etc.) for each new build.
-
-### Step 3: Authenticate with ECR
-
-```bash
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 732560673613.dkr.ecr.us-east-1.amazonaws.com
-```
-
-### Step 4: Push to ECR
-
-```bash
-docker push 732560673613.dkr.ecr.us-east-1.amazonaws.com/y-sweet:v6
-```
-
-### Step 5: Update Terraform Configuration
-
-Update the `image` variable in `terraform.tfvars`:
-
-```hcl
-image = "732560673613.dkr.ecr.us-east-1.amazonaws.com/y-sweet:v6"
-```
-
-### Step 6: Deploy the Updated Image
-
-Apply the Terraform changes:
-
-```bash
-terraform plan
-terraform apply
-```
-
-This will update your ECS service to use the new image. ECS will perform a rolling deployment, so there should be minimal downtime.
-
-### Build Script
-
-You can also create a build script to automate this process:
-
-```bash
-#!/bin/bash
-set -e
-
-VERSION=${1:-"latest"}
-ACCOUNT_ID="732560673613"
-REGION="us-east-1"
-REPO_NAME="y-sweet"
-
-echo "Building Y-Sweet Docker image..."
-cd y-sweet/crates
-docker build -t y-sweet:local .
-
-echo "Tagging image for ECR..."
-docker tag y-sweet:local ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}:${VERSION}
-
-echo "Authenticating with ECR..."
-aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
-
-echo "Pushing image to ECR..."
-docker push ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}:${VERSION}
-
-echo "Image pushed successfully: ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}:${VERSION}"
-echo "Don't forget to update terraform.tfvars with the new image tag!"
-```
-
-Save this as `build-and-push.sh` and run with:
-```bash
-chmod +x build-and-push.sh
+# Build and push with auto-incrementing version
 ./build-and-push.sh v7
-```
 
-**Note:** This will permanently delete all documents in S3. Export any important data first.
+# Build and push as latest
+./build-and-push.sh
+
+# Build development version
+./build-and-push.sh dev
+```
 
 ## 📄 License
 
