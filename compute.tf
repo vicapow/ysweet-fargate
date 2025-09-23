@@ -66,10 +66,13 @@ resource "aws_iam_role_policy" "s3_access" {
         "s3:DeleteObject",
         "s3:ListBucket"
       ],
-      Resource = [
+      Resource = concat([
         "arn:aws:s3:::${var.bucket_name}",
         "arn:aws:s3:::${var.bucket_name}/*"
-      ]
+      ], var.dev_bucket_name != "" ? [
+        "arn:aws:s3:::${var.dev_bucket_name}",
+        "arn:aws:s3:::${var.dev_bucket_name}/*"
+      ] : [])
     }]
   })
 }
@@ -96,10 +99,13 @@ resource "aws_iam_user_policy" "ysweet_s3_user_policy" {
         "s3:DeleteObject",
         "s3:ListBucket"
       ],
-      Resource = [
+      Resource = concat([
         "arn:aws:s3:::${var.bucket_name}",
         "arn:aws:s3:::${var.bucket_name}/*"
-      ]
+      ], var.dev_bucket_name != "" ? [
+        "arn:aws:s3:::${var.dev_bucket_name}",
+        "arn:aws:s3:::${var.dev_bucket_name}/*"
+      ] : [])
     }]
   })
 }
