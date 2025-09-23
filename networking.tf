@@ -119,6 +119,13 @@ resource "aws_lb_target_group" "this" {
 
   # Optimize for WebSocket connections
   deregistration_delay = 30
+
+  # Enable connection stickiness for WebSocket sessions
+  stickiness {
+    enabled         = true
+    type            = "lb_cookie"
+    cookie_duration = 86400
+  }
 }
 
 # ---------- SSL Certificate (optional) ----------
