@@ -32,3 +32,8 @@ output "billing_dashboard_setup" {
   value       = "https://console.aws.amazon.com/billing/home#/preferences"
   description = "Enable billing alerts here to see cost metrics in the dashboard"
 }
+
+output "s3_api_logs_group" {
+  value       = aws_cloudwatch_log_group.s3_api_logs.name
+  description = "CloudWatch Log Group for S3 API calls via CloudTrail"
+}

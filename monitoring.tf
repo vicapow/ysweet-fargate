@@ -116,3 +116,49 @@ fields @timestamp, @message
 | sort @timestamp desc
 EOF
 }
+
+resource "aws_cloudwatch_query_definition" "s3_api_errors" {
+  name = "${var.app_name}-s3-api-errors"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.s3_api_logs.name
+  ]
+  
+  query_string = <<EOF
+fields @timestamp, eventName, errorCode, errorMessage, responseElements.error.code, responseElements.error.message
+| filter errorCode exists or responseElements.error.code exists
+| filter eventName like /Put/ or eventName like /Get/ or eventName like /Delete/
+| stats count() as error_count by errorCode, responseElements.error.code, eventName
+| sort error_count desc
+EOF
+}
+
+resource "aws_cloudwatch_query_definition" "s3_503_errors" {
+  name = "${var.app_name}-s3-503-errors"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.s3_api_logs.name
+  ]
+  
+  query_string = <<EOF
+fields @timestamp, eventName, sourceIPAddress, userAgent, responseElements.error.code, responseElements.error.message
+| filter responseElements.error.code = "503" or errorCode = "ServiceUnavailable"
+| sort @timestamp desc
+| limit 50
+EOF
+}
+
+resource "aws_cloudwatch_query_definition" "s3_put_operations" {
+  name = "${var.app_name}-s3-put-operations"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.s3_api_logs.name
+  ]
+  
+  query_string = <<EOF
+fields @timestamp, eventName, sourceIPAddress, requestParameters.key
+| filter eventName = "PutObject"
+| stats count() as put_count by bin(1m)
+| sort @timestamp desc
+EOF
+}
