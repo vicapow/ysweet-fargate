@@ -197,3 +197,94 @@ resource "aws_ecs_service" "this" {
   # Ensure ALB listener/target group exist first.
   depends_on = [aws_lb_listener.http]
 }
+
+# ---------- Dev Server Resources ----------
+# Dev ECS Task Definition - smaller and simpler
+resource "aws_ecs_task_definition" "dev" {
+  count                    = var.enable_dev_server ? 1 : 0
+  family                   = "${var.app_name}-dev"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "512"   # 0.5 vCPU (much smaller)
+  memory                   = "1024"  # 1 GB RAM
+  execution_role_arn       = aws_iam_role.task_exec.arn
+  task_role_arn           = aws_iam_role.task_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "${var.app_name}-dev"
+      image     = var.dev_image != "" ? var.dev_image : var.image
+      essential = true
+      command   = ["sh", "-c", "y-sweet serve --url-prefix=http://${aws_lb.dev[0].dns_name}/ --host=0.0.0.0 --auth=$AUTH_KEY s3://${var.dev_bucket_name != "" ? var.dev_bucket_name : var.bucket_name}"]
+      portMappings = [
+        { containerPort = var.container_port, protocol = "tcp" }
+      ]
+      environment = [
+        { name = "PORT", value = tostring(var.container_port) },
+        { name = "STORAGE_BUCKET", value = var.dev_bucket_name != "" ? var.dev_bucket_name : var.bucket_name },
+        { name = "AWS_ACCESS_KEY_ID", value = aws_iam_access_key.ysweet_s3_access_key.id },
+        { name = "AWS_SECRET_ACCESS_KEY", value = aws_iam_access_key.ysweet_s3_access_key.secret },
+        { name = "AWS_DEFAULT_REGION", value = var.region },
+        { name = "CORS_ALLOW_ORIGIN", value = "*" },
+        { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
+        { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" },
+        { name = "S3_ENDPOINT", value = "https://s3.${var.region}.amazonaws.com" },
+        { name = "RUST_LOG", value = "debug" }  # More verbose logging for dev
+      ]
+      secrets = [
+        {
+          name      = "AUTH_KEY",
+          valueFrom = var.ysweet_auth_key_secret_arn
+        }
+      ]
+      logConfiguration = {
+        logDriver = "awslogs",
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.app.name,
+          awslogs-region        = var.region,
+          awslogs-stream-prefix = "ecs-dev"
+        }
+      }
+    }
+  ])
+}
+
+# Dev ECS Service
+resource "aws_ecs_service" "dev" {
+  count           = var.enable_dev_server ? 1 : 0
+  name            = "${var.app_name}-dev-svc"
+  cluster         = aws_ecs_cluster.this.id
+  task_definition = aws_ecs_task_definition.dev[0].arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+
+  # Use rolling updates for dev too
+  deployment_controller {
+    type = "ECS"
+  }
+
+  # Allow more flexibility for dev server deployments
+  deployment_maximum_percent         = 200  # Can have 2 tasks during deployment
+  deployment_minimum_healthy_percent = 50   # Keep at least half healthy
+
+  # Don't wait for steady state in dev
+  wait_for_steady_state = false
+
+  # Shorter grace period for dev
+  health_check_grace_period_seconds = 60
+
+  network_configuration {
+    subnets          = data.aws_subnets.public.ids
+    security_groups  = [aws_security_group.dev_tasks[0].id]
+    assign_public_ip = true
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.dev[0].arn
+    container_name   = "${var.app_name}-dev"
+    container_port   = var.container_port
+  }
+
+  # Ensure dev ALB listener/target group exist first.
+  depends_on = [aws_lb_listener.dev_http]
+}

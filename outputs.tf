@@ -37,3 +37,14 @@ output "s3_api_logs_group" {
   value       = aws_cloudwatch_log_group.s3_api_logs.name
   description = "CloudWatch Log Group for S3 API calls via CloudTrail"
 }
+
+# Dev Server Outputs
+output "dev_alb_dns_name" {
+  value       = var.enable_dev_server ? aws_lb.dev[0].dns_name : null
+  description = "DNS name of the Dev Application Load Balancer"
+}
+
+output "dev_application_url" {
+  value       = var.enable_dev_server ? "http://${aws_lb.dev[0].dns_name}" : null
+  description = "Dev Application URL (HTTP only, no SSL)"
+}

@@ -200,6 +200,9 @@ container_port  = 8080
 | `domain_name` | string | `""` | Domain for SSL certificate |
 | `create_ssl_cert` | bool | `false` | Whether to create SSL certificate |
 | `log_level` | string | `error` | Y-Sweet log level (error, warn, info, debug, trace) |
+| `enable_dev_server` | bool | `false` | Whether to create a development server instance |
+| `dev_image` | string | `""` | Y-Sweet Docker image for dev server (optional, uses main image if not specified) |
+| `dev_bucket_name` | string | `""` | S3 bucket for dev storage (optional, uses main bucket if not specified) |
 
 ## 📊 Monitoring & Observability
 
@@ -305,6 +308,81 @@ Add the CNAME validation record shown in Terraform output to your DNS. Certifica
 - Automatic HTTP → HTTPS redirect
 - Modern TLS 1.2+ security
 
+## 🚀 Development Server
+
+### **Overview**
+
+The infrastructure supports an optional development server that runs alongside your production environment with the following characteristics:
+
+- **Smaller Resources**: 0.5 vCPU and 1 GB RAM (vs 4 vCPU and 8 GB for production)
+- **HTTP Only**: No SSL certificate or HTTPS setup required
+- **Debug Logging**: More verbose logging for development debugging
+- **Separate Storage**: Can optionally use a different S3 bucket
+- **Independent Scaling**: Separate ALB and ECS service
+
+### **Enable Dev Server**
+
+Add to your `terraform.tfvars`:
+
+```hcl
+# Enable development server
+enable_dev_server = true
+
+# Optional: Use different image for dev
+dev_image = "your-account.dkr.ecr.region.amazonaws.com/y-sweet:dev"
+
+# Optional: Use separate S3 bucket for dev
+dev_bucket_name = "your-dev-bucket-name"
+```
+
+```bash
+terraform apply
+```
+
+### **Access Dev Server**
+
+```bash
+# Get dev server URL
+terraform output dev_application_url
+
+# Test dev server health
+curl $(terraform output -raw dev_application_url)/ready
+```
+
+### **Dev Server Logging**
+
+The dev server shares the same CloudWatch log group (`/ecs/ysweet`) but uses a different log stream prefix for easy filtering:
+
+```bash
+# View only dev server logs
+aws logs filter-log-events \
+  --log-group-name "/ecs/ysweet" \
+  --filter-pattern '[timestamp, requestId, level="ERROR"]' \
+  --region us-east-1 \
+  --query 'events[?contains(logStreamName, `ecs-dev`)]' \
+  --output text
+
+# Tail dev server logs in real-time
+aws logs tail "/ecs/ysweet" \
+  --filter-pattern 'ecs-dev' \
+  --follow
+
+# Get dev server connection string
+aws logs filter-log-events \
+  --log-group-name "/ecs/ysweet" \
+  --filter-pattern "CONNECTION_STRING" \
+  --region us-east-1 \
+  --query 'events[?contains(logStreamName, `ecs-dev`)].message' \
+  --output text
+```
+
+### **Log Stream Naming**
+
+- **Production logs**: `ecs/ysweet/[task-id]`
+- **Dev logs**: `ecs-dev/ysweet-dev/[task-id]`
+
+This makes it easy to filter logs by environment when troubleshooting.
+
 ## 🔧 Usage
 
 ### **Document Operations**
@@ -408,7 +486,8 @@ Get all important URLs with Terraform outputs:
 
 ```bash
 # Application & monitoring
-terraform output application_url          # Your Y-Sweet application
+terraform output application_url          # Your Y-Sweet production application
+terraform output dev_application_url      # Your Y-Sweet dev application (if enabled)
 terraform output dashboard_url            # CloudWatch monitoring dashboard
 terraform output cloudwatch_insights_url  # Advanced log analysis
 

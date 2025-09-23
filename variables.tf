@@ -48,3 +48,22 @@ variable "log_level" {
   description = "Y-Sweet application log level (error, warn, info, debug, trace)"
   default     = "error"
 }
+
+# Dev Server Configuration
+variable "enable_dev_server" {
+  type        = bool
+  description = "Whether to create a development server instance"
+  default     = false
+}
+
+variable "dev_image" {
+  type        = string
+  description = "Y-Sweet Docker image for dev server (optional, will use main image if not specified)"
+  default     = ""
+}
+
+variable "dev_bucket_name" {
+  type        = string
+  description = "S3 bucket name for Y-Sweet dev storage (optional, will use main bucket if not specified)"
+  default     = ""
+}

@@ -111,7 +111,104 @@ resource "aws_acm_certificate_validation" "this" {
   }
 }
 
-# ---------- Listeners ----------
+# ---------- Dev Server Resources ----------
+# Dev ALB Security Group
+resource "aws_security_group" "dev_alb" {
+  count       = var.enable_dev_server ? 1 : 0
+  name        = "${var.app_name}-dev-alb-sg"
+  description = "Dev ALB SG"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Dev Tasks Security Group
+resource "aws_security_group" "dev_tasks" {
+  count       = var.enable_dev_server ? 1 : 0
+  name        = "${var.app_name}-dev-tasks-sg"
+  description = "Dev ECS tasks SG"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    from_port       = var.container_port
+    to_port         = var.container_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.dev_alb[0].id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Dev ALB
+resource "aws_lb" "dev" {
+  count              = var.enable_dev_server ? 1 : 0
+  name               = "${var.app_name}-dev-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.dev_alb[0].id]
+  subnets            = data.aws_subnets.public.ids
+
+  # Standard timeout for dev server
+  idle_timeout               = 60
+  enable_deletion_protection = false
+}
+
+# Dev Target Group
+resource "aws_lb_target_group" "dev" {
+  count       = var.enable_dev_server ? 1 : 0
+  name        = "${var.app_name}-dev-tg"
+  port        = var.container_port
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = data.aws_vpc.default.id
+
+  health_check {
+    path                = "/ready"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 10
+    interval            = 30
+    matcher             = "200"
+  }
+
+  deregistration_delay = 30
+}
+
+# Dev HTTP Listener (no SSL)
+resource "aws_lb_listener" "dev_http" {
+  count             = var.enable_dev_server ? 1 : 0
+  load_balancer_arn = aws_lb.dev[0].arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = "forward"
+    forward {
+      target_group {
+        arn = aws_lb_target_group.dev[0].arn
+      }
+    }
+  }
+}
+
+# ---------- Production Listeners ----------
 # HTTP Listener
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
