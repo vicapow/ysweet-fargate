@@ -199,6 +199,7 @@ container_port  = 8080
 | `ysweet_auth_key_secret_arn` | string | **required** | ARN of Secrets Manager secret containing AUTH_KEY |
 | `domain_name` | string | `""` | Domain for SSL certificate |
 | `create_ssl_cert` | bool | `false` | Whether to create SSL certificate |
+| `log_level` | string | `error` | Y-Sweet log level (error, warn, info, debug, trace) |
 
 ## 📊 Monitoring & Observability
 

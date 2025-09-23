@@ -9,3 +9,6 @@ ysweet_auth_key_secret_arn = "arn:aws:secretsmanager:us-east-1:732560673613:secr
 # Set create_ssl_cert = true and provide domain_name to enable HTTPS
 create_ssl_cert = true
 domain_name     = "ysweet.crixet.com"
+
+# Logging Configuration
+log_level = "error"

@@ -42,3 +42,9 @@ variable "create_ssl_cert" {
   description = "Whether to create an SSL certificate and HTTPS listener"
   default     = false
 }
+
+variable "log_level" {
+  type        = string
+  description = "Y-Sweet application log level (error, warn, info, debug, trace)"
+  default     = "error"
+}
