@@ -105,12 +105,6 @@ aws s3api put-bucket-encryption \
       }
     }]
   }'
-
-# Enable CloudWatch metrics (required for dashboard monitoring)
-aws s3api put-bucket-metrics-configuration \
-  --bucket $BUCKET_NAME \
-  --id EntireBucket \
-  --metrics-configuration Id=EntireBucket
 ```
 
 ### **3. Verify Bucket Configuration**
