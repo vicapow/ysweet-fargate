@@ -13,8 +13,7 @@ Production-ready Terraform infrastructure for deploying [Y-Sweet](https://github
 ./setup-remote-state.sh
 
 # 2. Configure your deployment
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your values
+# Create terraform.tfvars with your configuration (see Configuration section below)
 
 # 3. Deploy
 terraform init
@@ -47,12 +46,11 @@ Internet → ALB (HTTP/HTTPS) → ECS Fargate → Y-Sweet Server
 | **Security Groups** | Network security | Minimal access (ALB → ECS only) |
 
 ### **Key Features**
-- ✅ **High Concurrency**: Handles significant concurrent WebSocket connections
-- ✅ **Real-time Sync**: Optimized for collaborative document editing
-- ✅ **Production Ready**: SSL/TLS, monitoring, security best practices
-- ✅ **Cost Monitoring**: Real-time AWS cost tracking
-- ✅ **Auto-scaling Ready**: Easy to extend with auto-scaling groups
-- ✅ **Fault Tolerant**: Health checks and graceful degradation
+- High-performance WebSocket handling for concurrent connections
+- Real-time collaborative document synchronization
+- SSL/TLS termination with automatic certificate validation
+- Comprehensive monitoring and cost tracking
+- Production-ready security and fault tolerance
 
 ## 📁 Project Structure
 
@@ -81,8 +79,8 @@ Each file has a single responsibility, making the infrastructure easy to underst
 ### **1. Create the S3 Bucket**
 
 ```bash
-# Replace 'your-ysweet-storage-bucket' with your desired bucket name
-export BUCKET_NAME="your-ysweet-storage-bucket"
+# Replace 'y-crixet' with your desired bucket name
+export BUCKET_NAME="y-crixet"
 export AWS_REGION="us-east-1"  # or your preferred region
 
 # Create the bucket
@@ -121,7 +119,7 @@ After creating a new bucket OR to verify an existing bucket is properly configur
 
 ```bash
 # Replace with your actual bucket name
-BUCKET_NAME="your-bucket-name"
+BUCKET_NAME="y-crixet"
 
 # Check versioning
 aws s3api get-bucket-versioning --bucket $BUCKET_NAME
@@ -173,13 +171,13 @@ Create `terraform.tfvars` with these required values:
 
 ```hcl
 # Required
-image                      = "your-account.dkr.ecr.region.amazonaws.com/y-sweet:latest"
-bucket_name                = "your-ysweet-storage-bucket"
-ysweet_auth_key_secret_arn = "arn:aws:secretsmanager:region:account:secret:ysweet-auth-key-xxxxxx"
+image                      = "732560673613.dkr.ecr.us-east-1.amazonaws.com/y-sweet:latest"
+bucket_name                = "y-crixet"
+ysweet_auth_key_secret_arn = "arn:aws:secretsmanager:us-east-1:732560673613:secret:ysweet-auth-key-p4qg7y"
 
 # Optional SSL setup
 create_ssl_cert = true
-domain_name     = "ysweet.yourdomain.com"
+domain_name     = "ysweet.crixet.com"
 
 # Optional customization
 region          = "us-east-1"
@@ -203,6 +201,8 @@ container_port  = 8080
 | `enable_dev_server` | bool | `false` | Whether to create a development server instance |
 | `dev_image` | string | `""` | Y-Sweet Docker image for dev server (optional, uses main image if not specified) |
 | `dev_bucket_name` | string | `""` | S3 bucket for dev storage (optional, uses main bucket if not specified) |
+| `dev_domain_name` | string | `""` | Domain for dev server SSL certificate |
+| `create_dev_ssl_cert` | bool | `false` | Whether to create SSL certificate for dev server |
 
 ## 📊 Monitoring & Observability
 
@@ -237,49 +237,166 @@ S3 storage monitoring is handled through the standard ECS application logs and C
 
 ## 🔒 SSL/HTTPS Setup
 
-### **1. Domain Configuration**
-Set up your domain to point to the load balancer:
+### **Overview**
 
-```bash
-# Get your ALB DNS name
-terraform output alb_dns_name
+Y-Sweet supports SSL/HTTPS for secure WebSocket connections. The infrastructure automatically creates and validates SSL certificates using AWS Certificate Manager (ACM) with DNS validation.
 
-# Add CNAME record:
-# Host: ysweet
-# Value: your-alb-dns-name.region.elb.amazonaws.com
-```
+### **1. Basic SSL Setup (Production)**
 
-### **2. Enable SSL**
-Update `terraform.tfvars`:
-
+#### **Step 1: Configure SSL in terraform.tfvars**
 ```hcl
 create_ssl_cert = true
-domain_name     = "ysweet.yourdomain.com"
+domain_name     = "ysweet.crixet.com"
 ```
 
+#### **Step 2: Apply Configuration to Create Certificate**
 ```bash
+# Create the certificate first (it will be in PENDING_VALIDATION status)
+terraform apply -target=aws_acm_certificate.this
+```
+
+#### **Step 3: Get DNS Validation Records**
+```bash
+# Get the certificate ARN from output
+CERT_ARN=$(terraform output -raw ssl_certificate_arn)
+
+# Get DNS validation record in table format
+aws acm describe-certificate \
+  --certificate-arn $CERT_ARN \
+  --region us-east-1 \
+  --query 'Certificate.DomainValidationOptions[0].ResourceRecord' \
+  --output table
+```
+
+#### **Step 4: Add DNS Validation Record**
+Add the CNAME record from Step 3 to your DNS provider.
+
+#### **Step 5: Complete Setup**
+See **Section 3: Complete DNS Setup** below for certificate validation and application DNS records.
+
+### **2. Development Server SSL Setup**
+
+The development server can also have SSL configured with its own domain:
+
+#### **Configure Dev SSL in terraform.tfvars**
+```hcl
+# Enable development server with SSL
+enable_dev_server    = true
+create_dev_ssl_cert  = true
+dev_domain_name      = "ysweet.dev.crixet.com"
+```
+
+#### **Get Dev Certificate DNS Validation Records**
+```bash
+# Apply to create dev certificate
+terraform apply -target=aws_acm_certificate.dev
+
+# Get dev certificate validation record
+DEV_CERT_ARN=$(terraform output -raw dev_ssl_certificate_arn)
+aws acm describe-certificate \
+  --certificate-arn $DEV_CERT_ARN \
+  --region us-east-1 \
+  --query 'Certificate.DomainValidationOptions[0].ResourceRecord' \
+  --output table
+```
+
+### **3. Complete DNS Setup**
+
+After creating certificates for both production and dev (if enabled), add the DNS validation records from steps 1 and 2 to your DNS provider, then:
+
+```bash
+# Wait 5-15 minutes for DNS propagation, then validate certificates
+terraform apply -target=aws_acm_certificate_validation.this      # Production
+terraform apply -target=aws_acm_certificate_validation.dev       # Dev (if enabled)
+
+# Complete the full deployment
 terraform apply
 ```
 
-### **3. DNS Validation**
-Add the CNAME validation record shown in Terraform output to your DNS. Certificate validation typically takes 5-10 minutes.
+Add CNAME records pointing your domains to the load balancers:
+- `ysweet.crixet.com` → `$(terraform output -raw alb_dns_name)`
+- `ysweet.dev.crixet.com` → `$(terraform output -raw dev_alb_dns_name)` (if dev enabled)
 
-**Benefits:**
-- Secure WebSocket connections (`wss://`)
-- Automatic HTTP → HTTPS redirect
-- Modern TLS 1.2+ security
+### **4. Certificate Status Monitoring**
+
+#### **Check Certificate Status**
+```bash
+# Production certificate
+aws acm describe-certificate \
+  --certificate-arn $(terraform output -raw ssl_certificate_arn) \
+  --query 'Certificate.Status' \
+  --output text
+
+# Development certificate (if enabled)
+aws acm describe-certificate \
+  --certificate-arn $(terraform output -raw dev_ssl_certificate_arn) \
+  --query 'Certificate.Status' \
+  --output text
+```
+
+#### **Monitor Certificate Validation**
+```bash
+# Watch certificate status (runs every 30 seconds)
+watch -n 30 'aws acm describe-certificate --certificate-arn $(terraform output -raw ssl_certificate_arn) --query "Certificate.Status" --output text'
+```
+
+### **5. Troubleshooting SSL Issues**
+
+#### **Certificate Validation Timeout**
+If certificate validation times out (5 minutes):
+
+**Production Certificate:**
+```bash
+# 1. Destroy the failed certificate resources
+terraform destroy -target=aws_acm_certificate_validation.this -target=aws_acm_certificate.this
+
+# 2. Recreate the certificate
+terraform apply -target=aws_acm_certificate.this
+
+# 3. Get new validation records and add to DNS
+aws acm describe-certificate --certificate-arn $(terraform output -raw ssl_certificate_arn) --query 'Certificate.DomainValidationOptions[0].ResourceRecord' --output table
+
+# 4. Wait for DNS propagation (5-15 minutes) then validate
+terraform apply -target=aws_acm_certificate_validation.this
+
+# 5. Complete deployment
+terraform apply
+```
+
+**Dev Certificate (if enabled):**
+```bash
+# 1. Destroy the failed dev certificate resources
+terraform destroy -target=aws_acm_certificate_validation.dev -target=aws_acm_certificate.dev
+
+# 2. Recreate the dev certificate
+terraform apply -target=aws_acm_certificate.dev
+
+# 3. Get new dev validation records and add to DNS
+aws acm describe-certificate --certificate-arn $(terraform output -raw dev_ssl_certificate_arn) --query 'Certificate.DomainValidationOptions[0].ResourceRecord' --output table
+
+# 4. Wait for DNS propagation (5-15 minutes) then validate
+terraform apply -target=aws_acm_certificate_validation.dev
+
+# 5. Complete deployment
+terraform apply
+```
+
+#### **DNS Propagation Check**
+```bash
+# Check if DNS validation record is propagated (replace _VALIDATION_RECORD with actual record from ACM output)
+dig _VALIDATION_RECORD.ysweet.crixet.com CNAME
+
+# Check from multiple DNS servers
+dig @8.8.8.8 _VALIDATION_RECORD.ysweet.crixet.com CNAME
+dig @1.1.1.1 _VALIDATION_RECORD.ysweet.crixet.com CNAME
+```
+
+
+
 
 ## 🚀 Development Server
 
-### **Overview**
-
-The infrastructure supports an optional development server that runs alongside your production environment with the following characteristics:
-
-- **Smaller Resources**: 0.5 vCPU and 1 GB RAM (vs 4 vCPU and 8 GB for production)
-- **HTTP Only**: No SSL certificate or HTTPS setup required
-- **Debug Logging**: More verbose logging for development debugging
-- **Separate Storage**: Can optionally use a different S3 bucket
-- **Independent Scaling**: Separate ALB and ECS service
+Optional development server with smaller resources (0.5 vCPU, 1GB RAM), separate logging, and optional SSL.
 
 ### **Enable Dev Server**
 
@@ -290,10 +407,10 @@ Add to your `terraform.tfvars`:
 enable_dev_server = true
 
 # Optional: Use different image for dev
-dev_image = "your-account.dkr.ecr.region.amazonaws.com/y-sweet:dev"
+dev_image = "732560673613.dkr.ecr.us-east-1.amazonaws.com/y-sweet:dev"
 
 # Optional: Use separate S3 bucket for dev
-dev_bucket_name = "your-dev-bucket-name"
+dev_bucket_name = "y-sweet-crixet-dev-storage"
 ```
 
 ```bash
@@ -312,37 +429,15 @@ curl $(terraform output -raw dev_application_url)/ready
 
 ### **Dev Server Logging**
 
-The dev server shares the same CloudWatch log group (`/ecs/ysweet`) but uses a different log stream prefix for easy filtering:
+The dev server has its own separate CloudWatch log group: `/ecs/ysweet-dev`
 
 ```bash
-# View only dev server logs
-aws logs filter-log-events \
-  --log-group-name "/ecs/ysweet" \
-  --filter-pattern '[timestamp, requestId, level="ERROR"]' \
-  --region us-east-1 \
-  --query 'events[?contains(logStreamName, `ecs-dev`)]' \
-  --output text
-
-# Tail dev server logs in real-time
-aws logs tail "/ecs/ysweet" \
-  --filter-pattern 'ecs-dev' \
-  --follow
+# View dev server logs
+aws logs tail "/ecs/ysweet-dev" --follow
 
 # Get dev server connection string
-aws logs filter-log-events \
-  --log-group-name "/ecs/ysweet" \
-  --filter-pattern "CONNECTION_STRING" \
-  --region us-east-1 \
-  --query 'events[?contains(logStreamName, `ecs-dev`)].message' \
-  --output text
+aws logs filter-log-events --log-group-name "/ecs/ysweet-dev" --filter-pattern "CONNECTION_STRING"
 ```
-
-### **Log Stream Naming**
-
-- **Production logs**: `ecs/ysweet/[task-id]`
-- **Dev logs**: `ecs-dev/ysweet-dev/[task-id]`
-
-This makes it easy to filter logs by environment when troubleshooting.
 
 ## 🔧 Usage
 
@@ -352,32 +447,41 @@ Y-Sweet automatically creates documents when clients connect:
 
 ```javascript
 // WebSocket connection
-const ws = new WebSocket('wss://ysweet.yourdomain.com/doc/my-document-id');
+const ws = new WebSocket('wss://ysweet.crixet.com/doc/my-document-id');
 
-// Authentication required
-const headers = { 'Authorization': 'Bearer your-auth-key' };
+// Authentication required (get auth key from AWS Secrets Manager)
+const headers = { 'Authorization': 'Bearer <YOUR_AUTH_KEY>' };
 ```
 
-### **Getting the Connection String**
+### **Accessing Your Y-Sweet Servers**
 
-To get the Y-Sweet connection string for client applications, check the CloudWatch logs:
-
+#### **Production Server**
 ```bash
-# Get the connection string from logs
-aws logs filter-log-events \
-  --log-group-name "/ecs/ysweet" \
-  --filter-pattern "CONNECTION_STRING" \
-  --region us-east-1 \
-  --query 'events[0].message' \
-  --output text
+# Get production connection string from logs
+aws logs filter-log-events --log-group-name "/ecs/ysweet" --filter-pattern "CONNECTION_STRING" --query 'events[0].message' --output text
 
-# Alternative: View recent logs with connection info
-aws logs tail "/ecs/ysweet" --since 1h --follow
+# View production logs
+aws logs tail "/ecs/ysweet" --follow
+
+# Get production server URL
+terraform output application_url
+```
+
+#### **Development Server** (if enabled)
+```bash
+# Get dev connection string from logs
+aws logs filter-log-events --log-group-name "/ecs/ysweet-dev" --filter-pattern "CONNECTION_STRING" --query 'events[0].message' --output text
+
+# View dev logs
+aws logs tail "/ecs/ysweet-dev" --follow
+
+# Get dev server URL
+terraform output dev_application_url
 ```
 
 **Example connection strings:**
-- Non-SSL: `ys://auth-token@your-alb-dns-name:8080`
-- SSL: `yss://auth-token@ysweet.yourdomain.com/`
+- Non-SSL: `ys://auth-token@$(terraform output -raw alb_dns_name):8080`
+- SSL: `yss://auth-token@ysweet.crixet.com/`
 
 The connection string format is: `ys[s]://[auth-token]@[host]/`
 
@@ -385,7 +489,7 @@ The connection string format is: `ys[s]://[auth-token]@[host]/`
 
 Documents are stored in S3 with this structure:
 ```
-s3://your-bucket/
+s3://y-crixet/
 ├── {document-uuid-1}/data.ysweet
 ├── {document-uuid-2}/data.ysweet
 └── ...
@@ -438,7 +542,7 @@ TASK_ID=$(aws ecs list-tasks --cluster ysweet-cluster --service-name ysweet-svc 
 aws logs get-log-events --log-group-name "/ecs/ysweet" --log-stream-name "ecs/ysweet/$TASK_ID"
 
 # Check domain resolution
-dig ysweet.yourdomain.com
+dig ysweet.crixet.com
 ```
 
 ## 🔗 Quick Access Links
@@ -466,31 +570,6 @@ Use S3 backend for production deployments:
 ./setup-remote-state.sh
 terraform init  # Migrate existing state when prompted
 ```
-
-**Benefits:**
-- Team collaboration
-- State locking
-- Backup and versioning
-- No single point of failure
-
-### **Scaling Considerations**
-
-This infrastructure can be extended with:
-- **Auto Scaling Groups** for automatic scaling
-- **Multiple AZs** for higher availability  
-- **CloudFront CDN** for global performance
-- **RDS** for session/metadata storage
-- **ElastiCache** for caching layer
-
-### **Security Best Practices**
-
-- ✅ IAM roles with least privilege
-- ✅ Security groups with minimal access
-- ✅ S3 encryption at rest
-- ✅ HTTPS/TLS in transit
-- ✅ VPC network isolation
-- ✅ Authentication required for all operations
-
 ## 🧹 Cleanup
 
 Remove all infrastructure:

@@ -36,7 +36,12 @@ output "dev_alb_dns_name" {
   description = "DNS name of the Dev Application Load Balancer"
 }
 
+output "dev_ssl_certificate_arn" {
+  value       = var.create_dev_ssl_cert ? aws_acm_certificate.dev[0].arn : null
+  description = "ARN of the dev SSL certificate (if created)"
+}
+
 output "dev_application_url" {
-  value       = var.enable_dev_server ? "http://${aws_lb.dev[0].dns_name}" : null
-  description = "Dev Application URL (HTTP only, no SSL)"
+  value       = var.enable_dev_server ? (var.create_dev_ssl_cert ? "https://${var.dev_domain_name}" : "http://${aws_lb.dev[0].dns_name}") : null
+  description = "Dev Application URL (HTTP or HTTPS depending on SSL configuration)"
 }

@@ -67,3 +67,15 @@ variable "dev_bucket_name" {
   description = "S3 bucket name for Y-Sweet dev storage (optional, will use main bucket if not specified)"
   default     = ""
 }
+
+variable "dev_domain_name" {
+  type        = string
+  description = "Domain name for dev server SSL certificate (e.g., dev.yourdomain.com)"
+  default     = ""
+}
+
+variable "create_dev_ssl_cert" {
+  type        = bool
+  description = "Whether to create an SSL certificate and HTTPS listener for dev server"
+  default     = false
+}

@@ -250,7 +250,7 @@ resource "aws_ecs_task_definition" "dev" {
       name      = "${var.app_name}-dev"
       image     = var.dev_image != "" ? var.dev_image : var.image
       essential = true
-      command   = ["sh", "-c", "y-sweet serve --url-prefix=http://${aws_lb.dev[0].dns_name}/ --host=0.0.0.0 --auth=$AUTH_KEY s3://${var.dev_bucket_name != "" ? var.dev_bucket_name : var.bucket_name}"]
+      command   = ["sh", "-c", "y-sweet serve --url-prefix=${var.create_dev_ssl_cert ? "https" : "http"}://${var.create_dev_ssl_cert ? var.dev_domain_name : aws_lb.dev[0].dns_name}/ --host=0.0.0.0 --auth=$AUTH_KEY s3://${var.dev_bucket_name != "" ? var.dev_bucket_name : var.bucket_name}"]
       portMappings = [
         { containerPort = var.container_port, protocol = "tcp" }
       ]

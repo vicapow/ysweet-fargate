@@ -148,6 +148,26 @@ resource "aws_acm_certificate_validation" "this" {
   }
 }
 
+# ---------- Dev SSL Certificate (optional) ----------
+resource "aws_acm_certificate" "dev" {
+  count                     = var.create_dev_ssl_cert ? 1 : 0
+  domain_name               = var.dev_domain_name
+  validation_method         = "DNS"
+  
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_acm_certificate_validation" "dev" {
+  count           = var.create_dev_ssl_cert ? 1 : 0
+  certificate_arn = aws_acm_certificate.dev[0].arn
+  
+  timeouts {
+    create = "5m"
+  }
+}
+
 # ---------- Dev Server Resources ----------
 # Dev ALB Security Group
 resource "aws_security_group" "dev_alb" {
@@ -159,6 +179,13 @@ resource "aws_security_group" "dev_alb" {
   ingress {
     from_port   = 80
     to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -228,18 +255,56 @@ resource "aws_lb_target_group" "dev" {
   deregistration_delay = 30
 }
 
-# Dev HTTP Listener (no SSL)
+# Dev HTTP Listener
 resource "aws_lb_listener" "dev_http" {
   count             = var.enable_dev_server ? 1 : 0
   load_balancer_arn = aws_lb.dev[0].arn
   port              = 80
   protocol          = "HTTP"
 
+  dynamic "default_action" {
+    for_each = var.create_dev_ssl_cert ? [1] : []
+    content {
+      type = "redirect"
+      redirect {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
+
+  dynamic "default_action" {
+    for_each = var.create_dev_ssl_cert ? [] : [1]
+    content {
+      type = "forward"
+      forward {
+        target_group {
+          arn = aws_lb_target_group.dev[0].arn
+        }
+      }
+    }
+  }
+}
+
+# Dev HTTPS Listener (optional)
+resource "aws_lb_listener" "dev_https" {
+  count             = var.create_dev_ssl_cert ? 1 : 0
+  load_balancer_arn = aws_lb.dev[0].arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  certificate_arn   = aws_acm_certificate_validation.dev[0].certificate_arn
+
   default_action {
     type = "forward"
     forward {
       target_group {
         arn = aws_lb_target_group.dev[0].arn
+      }
+      stickiness {
+        enabled  = false
+        duration = 1
       }
     }
   }
