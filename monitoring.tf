@@ -18,17 +18,23 @@ resource "aws_cloudwatch_dashboard" "s3_performance" {
         height = 6
 
         properties = {
-          metrics = [
+          metrics = concat([
             ["AWS/S3", "4xxErrors", "BucketName", var.bucket_name],
             [".", "5xxErrors", ".", "."],
             [".", "AllRequests", ".", "."],
             [".", "GetRequests", ".", "."],
             [".", "PutRequests", ".", "."]
-          ]
+          ], var.enable_dev_server && var.dev_bucket_name != "" ? [
+            ["AWS/S3", "4xxErrors", "BucketName", var.dev_bucket_name],
+            [".", "5xxErrors", ".", "."],
+            [".", "AllRequests", ".", "."],
+            [".", "GetRequests", ".", "."],
+            [".", "PutRequests", ".", "."]
+          ] : [])
           view    = "timeSeries"
           stacked = false
           region  = var.region
-          title   = "S3 Request Metrics"
+          title   = var.enable_dev_server && var.dev_bucket_name != "" ? "S3 Request Metrics (Production vs Dev)" : "S3 Request Metrics"
           period  = 300
         }
       },
@@ -40,14 +46,17 @@ resource "aws_cloudwatch_dashboard" "s3_performance" {
         height = 6
 
         properties = {
-          metrics = [
+          metrics = concat([
             ["AWS/S3", "FirstByteLatency", "BucketName", var.bucket_name],
             [".", "TotalRequestLatency", ".", "."]
-          ]
+          ], var.enable_dev_server && var.dev_bucket_name != "" ? [
+            ["AWS/S3", "FirstByteLatency", "BucketName", var.dev_bucket_name],
+            [".", "TotalRequestLatency", ".", "."]
+          ] : [])
           view    = "timeSeries"
           stacked = false
           region  = var.region
-          title   = "S3 Latency Metrics"
+          title   = var.enable_dev_server && var.dev_bucket_name != "" ? "S3 Latency Metrics (Production vs Dev)" : "S3 Latency Metrics"
           period  = 300
         }
       }
