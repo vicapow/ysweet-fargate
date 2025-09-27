@@ -165,7 +165,8 @@ resource "aws_ecs_task_definition" "this" {
         { name = "CORS_ALLOW_ORIGIN", value = "*" },
         { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
         { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" },
-        { name = "RUST_LOG", value = var.log_level }
+        { name = "RUST_LOG", value = var.log_level },
+        { name = "NO_COLOR", value = var.disable_ansi_colors ? "1" : "0" }
       ]
       secrets = [
         {
@@ -264,7 +265,8 @@ resource "aws_ecs_task_definition" "dev" {
         { name = "CORS_ALLOW_ORIGIN", value = "*" },
         { name = "CORS_ALLOW_METHODS", value = "GET,POST,PUT,DELETE,OPTIONS" },
         { name = "CORS_ALLOW_HEADERS", value = "Content-Type,Authorization,X-Requested-With,Origin,Connection,Upgrade,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol" },
-        { name = "RUST_LOG", value = "debug" }  # More verbose logging for dev
+        { name = "RUST_LOG", value = "debug" },  # More verbose logging for dev
+        { name = "NO_COLOR", value = var.disable_ansi_colors ? "1" : "0" }
       ]
       secrets = [
         {

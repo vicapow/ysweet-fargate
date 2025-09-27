@@ -4,65 +4,7 @@ resource "aws_cloudwatch_log_group" "app" {
   retention_in_days = 7
 }
 
-# ---------- S3 Performance Monitoring ----------
-resource "aws_cloudwatch_dashboard" "s3_performance" {
-  dashboard_name = "${var.app_name}-s3-performance"
-
-  dashboard_body = jsonencode({
-    widgets = [
-      {
-        type   = "metric"
-        x      = 0
-        y      = 0
-        width  = 12
-        height = 6
-
-        properties = {
-          metrics = concat([
-            ["AWS/S3", "4xxErrors", "BucketName", var.bucket_name],
-            [".", "5xxErrors", ".", "."],
-            [".", "AllRequests", ".", "."],
-            [".", "GetRequests", ".", "."],
-            [".", "PutRequests", ".", "."]
-          ], var.enable_dev_server && var.dev_bucket_name != "" ? [
-            ["AWS/S3", "4xxErrors", "BucketName", var.dev_bucket_name],
-            [".", "5xxErrors", ".", "."],
-            [".", "AllRequests", ".", "."],
-            [".", "GetRequests", ".", "."],
-            [".", "PutRequests", ".", "."]
-          ] : [])
-          view    = "timeSeries"
-          stacked = false
-          region  = var.region
-          title   = var.enable_dev_server && var.dev_bucket_name != "" ? "S3 Request Metrics (Production vs Dev)" : "S3 Request Metrics"
-          period  = 300
-        }
-      },
-      {
-        type   = "metric"
-        x      = 0
-        y      = 6
-        width  = 12
-        height = 6
-
-        properties = {
-          metrics = concat([
-            ["AWS/S3", "FirstByteLatency", "BucketName", var.bucket_name],
-            [".", "TotalRequestLatency", ".", "."]
-          ], var.enable_dev_server && var.dev_bucket_name != "" ? [
-            ["AWS/S3", "FirstByteLatency", "BucketName", var.dev_bucket_name],
-            [".", "TotalRequestLatency", ".", "."]
-          ] : [])
-          view    = "timeSeries"
-          stacked = false
-          region  = var.region
-          title   = var.enable_dev_server && var.dev_bucket_name != "" ? "S3 Latency Metrics (Production vs Dev)" : "S3 Latency Metrics"
-          period  = 300
-        }
-      }
-    ]
-  })
-}
+# S3 Performance Monitoring is now integrated into the main dashboard (dashboard.tf)
 
 # Separate log group for dev server
 resource "aws_cloudwatch_log_group" "app_dev" {
@@ -168,6 +110,31 @@ resource "aws_cloudwatch_log_metric_filter" "dev_total_logs" {
   }
 }
 
+# ---------- Document Persistence Metric Filters ----------
+resource "aws_cloudwatch_log_metric_filter" "doc_persistence" {
+  name           = "${var.app_name}-doc-persistence"
+  log_group_name = aws_cloudwatch_log_group.app.name
+  pattern        = "[timestamp, level=INFO, span, doc_id=*, rest=\"Done persisting.\"]"
+
+  metric_transformation {
+    name      = "DocPersistenceCount"
+    namespace = "YSweet/Documents"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "dev_doc_persistence" {
+  name           = "${var.app_name}-dev-doc-persistence"
+  log_group_name = aws_cloudwatch_log_group.app_dev.name
+  pattern        = "[timestamp, level=INFO, span, doc_id=*, rest=\"Done persisting.\"]"
+
+  metric_transformation {
+    name      = "DevDocPersistenceCount"
+    namespace = "YSweet/Documents"
+    value     = "1"
+  }
+}
+
 # ---------- S3 SlowDown Metric Filters ----------
 resource "aws_cloudwatch_log_metric_filter" "s3_slowdown_retries" {
   name           = "${var.app_name}-s3-slowdown-retries"
@@ -227,6 +194,58 @@ fields @timestamp, @message
 | parse @message "method=* attempt=* delay_ms=*" as method, attempt, delay_ms
 | stats count() as retry_count, avg(delay_ms) as avg_delay_ms, max(attempt) as max_attempts by method, bin(5m)
 | sort @timestamp desc
+EOF
+}
+
+resource "aws_cloudwatch_query_definition" "doc_persistence_analysis" {
+  name = "${var.app_name}-doc-persistence-timeline"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.app.name,
+    aws_cloudwatch_log_group.app_dev.name
+  ]
+  
+  query_string = <<EOF
+fields @timestamp, @message
+| filter @message like /Persisting/
+| parse @message "doc_id=\"*\"" as doc_id
+| stats count() by doc_id, bin(10s)
+| sort @timestamp desc
+EOF
+}
+
+resource "aws_cloudwatch_query_definition" "doc_persistence_recent" {
+  name = "${var.app_name}-doc-persistence-recent"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.app.name,
+    aws_cloudwatch_log_group.app_dev.name
+  ]
+  
+  query_string = <<EOF
+fields @timestamp, @message
+| filter @message like /Persisting/
+| parse @message "doc_id=\"*\"" as doc_id
+| sort @timestamp desc
+| limit 50
+EOF
+}
+
+resource "aws_cloudwatch_query_definition" "doc_persistence_summary" {
+  name = "${var.app_name}-doc-persistence-summary"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.app.name,
+    aws_cloudwatch_log_group.app_dev.name
+  ]
+  
+  query_string = <<EOF
+fields @timestamp, @message
+| filter @message like /Persisting/
+| parse @message "doc_id=\"*\"" as doc_id
+| stats count() as persistence_count by doc_id
+| sort persistence_count desc
+| limit 100
 EOF
 }
 

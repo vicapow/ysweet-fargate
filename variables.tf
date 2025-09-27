@@ -49,6 +49,12 @@ variable "log_level" {
   default     = "error"
 }
 
+variable "disable_ansi_colors" {
+  type        = bool
+  description = "Disable ANSI color codes in log output (useful for CloudWatch logs)"
+  default     = true
+}
+
 # Dev Server Configuration
 variable "enable_dev_server" {
   type        = bool

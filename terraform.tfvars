@@ -11,7 +11,8 @@ create_ssl_cert = true
 domain_name     = "ysweet.crixet.com"
 
 # Logging Configuration
-log_level = "warn"
+log_level = "info"
+disable_ansi_colors = true
 
 # Dev Server Configuration (optional)
 enable_dev_server    = true
