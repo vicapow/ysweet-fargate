@@ -58,3 +58,4 @@ echo "   • CloudWatch Dashboard: terraform output dashboard_url"
 echo "   • CloudWatch Console: https://console.aws.amazon.com/cloudwatch/home?region=$(terraform output -raw region)#metricsV2:graph=~();query=AWS%2FS3"
 echo ""
 echo "⏱️  Note: It may take up to 15 minutes for metrics to start appearing"
+
