@@ -59,3 +59,4 @@ echo "   • CloudWatch Console: https://console.aws.amazon.com/cloudwatch/home?
 echo ""
 echo "⏱️  Note: It may take up to 15 minutes for metrics to start appearing"
 
+

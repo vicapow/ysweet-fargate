@@ -262,27 +262,35 @@ resource "aws_lb_listener" "dev_http" {
   port              = 80
   protocol          = "HTTP"
 
-  dynamic "default_action" {
-    for_each = var.create_dev_ssl_cert ? [1] : []
-    content {
-      type = "redirect"
-      redirect {
-        port        = "443"
-        protocol    = "HTTPS"
-        status_code = "HTTP_301"
+  # Default action: forward to target group (for raw ELB URLs)
+  default_action {
+    type = "forward"
+    forward {
+      target_group {
+        arn = aws_lb_target_group.dev[0].arn
       }
     }
   }
+}
 
-  dynamic "default_action" {
-    for_each = var.create_dev_ssl_cert ? [] : [1]
-    content {
-      type = "forward"
-      forward {
-        target_group {
-          arn = aws_lb_target_group.dev[0].arn
-        }
-      }
+# Dev HTTP Listener Rule - Redirect to HTTPS only for custom domain
+resource "aws_lb_listener_rule" "dev_https_redirect" {
+  count        = var.create_dev_ssl_cert ? 1 : 0
+  listener_arn = aws_lb_listener.dev_http[0].arn
+  priority     = 100
+
+  action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+
+  condition {
+    host_header {
+      values = [var.dev_domain_name]
     }
   }
 }
